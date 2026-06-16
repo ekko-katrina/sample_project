@@ -1,9 +1,11 @@
 set(src_dirs
             LED
+            KEY
             )
 
 set(include_dirs
             LED
+            KEY
             )
 
 
