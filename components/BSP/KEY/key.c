@@ -35,5 +35,7 @@ uint8_t key_scan(uint8_t mode) // 扫描按键, mode 非 0 时允许连续触发
     {
         key_boot = 1; // 重新允许下一次按下触发
     }
+
+
     return keyval; // 返回本次扫描到的按键值
 }
