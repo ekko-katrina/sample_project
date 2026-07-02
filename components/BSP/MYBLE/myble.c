@@ -7,12 +7,61 @@
 #include "nimble/nimble_port_freertos.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
+#include <string.h>
 
 #define TAG "NimBLE-Demo"
 #define DEVICE_NAME "ESP32S3-NimBLE"
+#define MAX_PHONE_CONNECTIONS 2
 static bool ble_adv_active = false;
 static uint16_t rx_value_handler;
 static uint16_t tx_value_handler;
+static uint16_t conn_handles[MAX_PHONE_CONNECTIONS];
+static uint8_t conn_count = 0;
+
+static bool has_free_connection_slot(void)
+{
+    return conn_count < MAX_PHONE_CONNECTIONS;
+}
+
+static bool connection_exists(uint16_t conn_handle)
+{
+    for (uint8_t i = 0; i < conn_count; i++)
+    {
+        if (conn_handles[i] == conn_handle)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool add_connection(uint16_t conn_handle)
+{
+    if (!has_free_connection_slot() || connection_exists(conn_handle))
+    {
+        return false;
+    }
+
+    conn_handles[conn_count++] = conn_handle;
+    return true;
+}
+
+static bool remove_connection(uint16_t conn_handle)
+{
+    for (uint8_t i = 0; i < conn_count; i++)
+    {
+        if (conn_handles[i] == conn_handle)
+        {
+            conn_count--;
+            conn_handles[i] = conn_handles[conn_count];
+            conn_handles[conn_count] = 0;
+            return true;
+        }
+    }
+
+    return false;
+}
 
 static int gatt_event_handler(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
@@ -20,6 +69,12 @@ static int gatt_event_handler(uint16_t conn_handle, uint16_t attr_handle, struct
     {
         if (attr_handle == rx_value_handler)
         {
+            if (OS_MBUF_PKTLEN(ctxt->om) < 2)
+            {
+                ESP_LOGW(TAG, "连接 %d 写入数据长度不足 2 字节", conn_handle);
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
+
             if (ctxt->om->om_data[0] == 0x00)
             {
                 ESP_LOGE(TAG, "第 0 字节收到数据 0x00");
@@ -56,13 +111,27 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
     {
         if (event->connect.status == 0)
         {
-            ESP_LOGE(TAG, "设备已连接");
+            uint16_t conn_handle = event->connect.conn_handle;
+
+            if (!add_connection(conn_handle))
+            {
+                ESP_LOGW(TAG, "连接 %d 超出 2 台上限，主动断开", conn_handle);
+                ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+                return 0;
+            }
+
             ble_adv_active = false;
+            ESP_LOGI(TAG, "设备已连接，conn_handle=%d，当前连接数=%d", conn_handle, conn_count);
+
+            if (has_free_connection_slot())
+            {
+                start_advertising();
+            }
         }
         else
         {
             ESP_LOGE(TAG, "连接失败，重新广播");
-            if (!ble_adv_active)
+            if (!ble_adv_active && has_free_connection_slot())
             {
                 start_advertising();
             }
@@ -70,8 +139,13 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
     }
     else if (event->type == BLE_GAP_EVENT_DISCONNECT)
     {
-        ESP_LOGE(TAG, "设备断开连接");
-        if (!ble_adv_active)
+        uint16_t conn_handle = event->disconnect.conn.conn_handle;
+
+        remove_connection(conn_handle);
+        ble_adv_active = false;
+        ESP_LOGI(TAG, "设备断开连接，conn_handle=%d，当前连接数=%d", conn_handle, conn_count);
+
+        if (!ble_adv_active && has_free_connection_slot())
         {
             start_advertising();
         }
@@ -105,6 +179,18 @@ static const struct ble_gatt_svc_def gatt_svcs[] =
 
 void start_advertising(void)
 {
+    if (!has_free_connection_slot())
+    {
+        ble_adv_active = false;
+        ESP_LOGI(TAG, "已达到 2 台连接上限，停止广播");
+        return;
+    }
+
+    if (ble_adv_active)
+    {
+        return;
+    }
+
     struct ble_hs_adv_fields fields = {0};
     fields.name = (uint8_t *)DEVICE_NAME;
     fields.name_len = strlen(DEVICE_NAME);
