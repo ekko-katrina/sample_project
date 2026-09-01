@@ -1,254 +1,627 @@
 #include "myble.h"
-#include "driver/gpio.h"
+
+#include <stdio.h>
+#include <string.h>
+
+#include "esp_err.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "host/ble_gatt.h"
+#include "host/ble_gap.h"
 #include "host/ble_hs.h"
+#include "host/ble_hs_id.h"
+#include "host/ble_hs_mbuf.h"
 #include "host/util/util.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
-#include <string.h>
 
-#define TAG "NimBLE-Demo"
-#define DEVICE_NAME "ESP32S3-NimBLE"
-#define MAX_PHONE_CONNECTIONS 2
-static bool ble_adv_active = false;
-static uint16_t rx_value_handler;
-static uint16_t tx_value_handler;
-static uint16_t conn_handles[MAX_PHONE_CONNECTIONS];
-static uint8_t conn_count = 0;
+#define TAG "TMY05-BLE"
+#define DEVICE_NAME_PREFIX "Aurora Y05_"
+#define TMY05_SERVICE_UUID 0xFFF0
+#define TMY05_APP_WRITE_UUID 0xFFF6
+#define TMY05_APP_NOTIFY_UUID 0xFFF7
+#define MAX_PHONE_CONNECTIONS 2U
+#define RX_STREAM_CAPACITY 64U
+#define MIN_DATA_LENGTH 3U
 
-static bool has_free_connection_slot(void)
+typedef struct {
+    uint16_t handle;
+    bool in_use;
+    bool notify_enabled;
+    uint8_t rx_stream[RX_STREAM_CAPACITY];
+    size_t rx_length;
+} phone_connection_t;
+
+static bool g_ble_adv_active;
+static uint8_t g_own_addr_type;
+static uint16_t g_rx_value_handle;
+static uint16_t g_tx_value_handle;
+static phone_connection_t g_connections[MAX_PHONE_CONNECTIONS];
+static portMUX_TYPE g_state_lock = portMUX_INITIALIZER_UNLOCKED;
+static tmy05_state_t g_fridge_state = {
+    .power = TMY05_POWER_ON,
+    .unit = TMY05_UNIT_CELSIUS,
+    .mode = TMY05_MODE_COOLING,
+    .child_lock = TMY05_CHILD_LOCK_OFF,
+    .fault_code = TMY05_FAULT_NONE,
+    .target_temperature = -5,
+    .actual_temperature = 3,
+};
+static char g_device_name[sizeof(DEVICE_NAME_PREFIX) + 4U];
+
+static const ble_uuid16_t g_service_uuid = BLE_UUID16_INIT(TMY05_SERVICE_UUID);
+
+static int gap_event_handler(struct ble_gap_event *event, void *arg);
+
+static phone_connection_t *find_connection(uint16_t conn_handle)
 {
-    return conn_count < MAX_PHONE_CONNECTIONS;
-}
-
-static bool connection_exists(uint16_t conn_handle)
-{
-    for (uint8_t i = 0; i < conn_count; i++)
-    {
-        if (conn_handles[i] == conn_handle)
-        {
-            return true;
+    for (size_t i = 0; i < MAX_PHONE_CONNECTIONS; ++i) {
+        if (g_connections[i].in_use && g_connections[i].handle == conn_handle) {
+            return &g_connections[i];
         }
     }
 
-    return false;
+    return NULL;
 }
 
-static bool add_connection(uint16_t conn_handle)
+static phone_connection_t *add_connection(uint16_t conn_handle)
 {
-    if (!has_free_connection_slot() || connection_exists(conn_handle))
-    {
-        return false;
+    phone_connection_t *existing = find_connection(conn_handle);
+    if (existing != NULL) {
+        return existing;
     }
 
-    conn_handles[conn_count++] = conn_handle;
-    return true;
+    for (size_t i = 0; i < MAX_PHONE_CONNECTIONS; ++i) {
+        if (!g_connections[i].in_use) {
+            memset(&g_connections[i], 0, sizeof(g_connections[i]));
+            g_connections[i].in_use = true;
+            g_connections[i].handle = conn_handle;
+            return &g_connections[i];
+        }
+    }
+
+    return NULL;
 }
 
 static bool remove_connection(uint16_t conn_handle)
 {
-    for (uint8_t i = 0; i < conn_count; i++)
-    {
-        if (conn_handles[i] == conn_handle)
-        {
-            conn_count--;
-            conn_handles[i] = conn_handles[conn_count];
-            conn_handles[conn_count] = 0;
-            return true;
-        }
+    phone_connection_t *connection = find_connection(conn_handle);
+    if (connection == NULL) {
+        return false;
     }
 
-    return false;
+    memset(connection, 0, sizeof(*connection));
+    return true;
 }
 
-static int gatt_event_handler(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg)
+static size_t connection_count(void)
 {
-    if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR)
-    {
-        if (attr_handle == rx_value_handler)
-        {
-            if (OS_MBUF_PKTLEN(ctxt->om) < 2)
-            {
-                ESP_LOGW(TAG, "连接 %d 写入数据长度不足 2 字节", conn_handle);
-                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-            }
-
-            if (ctxt->om->om_data[0] == 0x00)
-            {
-                ESP_LOGE(TAG, "第 0 字节收到数据 0x00");
-            }
-            else if (ctxt->om->om_data[0] == 0x01)
-            {
-                ESP_LOGE(TAG, "第 0 字节收到数据 0x01");
-            }
-            if (ctxt->om->om_data[1] == 0x00)
-            {
-                ESP_LOGE(TAG, "第 1 字节收到数据 0x00");
-            }
-            else if (ctxt->om->om_data[1] == 0x01)
-            {
-                ESP_LOGE(TAG, "第 1 字节收到数据 0x01");
-            }
+    size_t count = 0;
+    for (size_t i = 0; i < MAX_PHONE_CONNECTIONS; ++i) {
+        if (g_connections[i].in_use) {
+            ++count;
         }
     }
-    else if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR)
-    {
-        if (attr_handle == tx_value_handler)
-        {
-            const char *value = "Hello";
-            os_mbuf_append(ctxt->om,value,strlen(value));
-        }
+    return count;
+}
+
+static bool has_free_connection_slot(void)
+{
+    return connection_count() < MAX_PHONE_CONNECTIONS;
+}
+
+static tmy05_state_t get_state_snapshot(void)
+{
+    tmy05_state_t snapshot;
+    portENTER_CRITICAL(&g_state_lock);
+    snapshot = g_fridge_state;
+    portEXIT_CRITICAL(&g_state_lock);
+    return snapshot;
+}
+
+static const char *fault_text(uint8_t fault_code)
+{
+    switch (fault_code) {
+    case TMY05_FAULT_NONE:
+        return "无故障";
+    case TMY05_FAULT_NTC_SHORT:
+        return "NTC短路";
+    case TMY05_FAULT_NTC_OPEN:
+        return "NTC开路";
+    case TMY05_FAULT_HIGH_TEMPERATURE:
+        return "75度高温保护";
+    default:
+        return "未知故障";
+    }
+}
+
+static void log_state_summary(const tmy05_state_t *state)
+{
+    ESP_LOGI(TAG,
+             "当前状态：%s，%s，%s，童锁%s，目标温度=%d，实际温度=%d，故障=%s(%u)",
+             state->power == TMY05_POWER_ON ? "开机" : "关机",
+             state->unit == TMY05_UNIT_FAHRENHEIT ? "华氏度" : "摄氏度",
+             state->mode == TMY05_MODE_HEATING ? "制热" : "制冷",
+             state->child_lock == TMY05_CHILD_LOCK_ON ? "上锁" : "解锁",
+             state->target_temperature,
+             state->actual_temperature,
+             fault_text(state->fault_code),
+             state->fault_code);
+}
+
+static void log_app_command(tmy05_command_t command, const tmy05_state_t *state)
+{
+    switch (command) {
+    case TMY05_COMMAND_GET_STATE:
+        ESP_LOGI(TAG, "收到App命令：获取冰箱全状态");
+        break;
+    case TMY05_COMMAND_SET_POWER:
+        ESP_LOGI(TAG,
+                 "收到App命令：%s",
+                 state->power == TMY05_POWER_ON ? "开机" : "关机");
+        break;
+    case TMY05_COMMAND_SET_MODE:
+        ESP_LOGI(TAG,
+                 "收到App命令：切换为%s模式",
+                 state->mode == TMY05_MODE_HEATING ? "制热" : "制冷");
+        break;
+    case TMY05_COMMAND_SET_UNIT:
+        ESP_LOGI(TAG,
+                 "收到App命令：温度单位改为%s",
+                 state->unit == TMY05_UNIT_FAHRENHEIT ? "华氏度" : "摄氏度");
+        break;
+    case TMY05_COMMAND_SET_TARGET_TEMPERATURE:
+        ESP_LOGI(TAG, "收到App命令：目标温度改为%d", state->target_temperature);
+        break;
+    case TMY05_COMMAND_SET_CHILD_LOCK:
+        ESP_LOGI(TAG,
+                 "收到App命令：童锁%s",
+                 state->child_lock == TMY05_CHILD_LOCK_ON ? "上锁" : "解锁");
+        break;
+    default:
+        ESP_LOGI(TAG, "收到App命令：0x%02X", (unsigned int)command);
+        break;
+    }
+
+    log_state_summary(state);
+}
+
+static int append_status_to_mbuf(struct os_mbuf *om)
+{
+    uint8_t frame[TMY05_STATUS_FRAME_SIZE];
+    tmy05_state_t snapshot = get_state_snapshot();
+    size_t length = tmy05_protocol_build_status_frame(&snapshot, frame, sizeof(frame));
+
+    if (length == 0U || os_mbuf_append(om, frame, length) != 0) {
+        return BLE_ATT_ERR_INSUFFICIENT_RES;
     }
 
     return 0;
 }
 
-static int gap_event_handler(struct ble_gap_event *event, void *arg)
+static void notify_connection(phone_connection_t *connection,
+                              const uint8_t *frame,
+                              size_t length)
 {
-    if (event->type == BLE_GAP_EVENT_CONNECT)
-    {
-        if (event->connect.status == 0)
-        {
-            uint16_t conn_handle = event->connect.conn_handle;
-
-            if (!add_connection(conn_handle))
-            {
-                ESP_LOGW(TAG, "连接 %d 超出 2 台上限，主动断开", conn_handle);
-                ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
-                return 0;
-            }
-
-            ble_adv_active = false;
-            ESP_LOGI(TAG, "设备已连接，conn_handle=%d，当前连接数=%d", conn_handle, conn_count);
-
-            if (has_free_connection_slot())
-            {
-                start_advertising();
-            }
-        }
-        else
-        {
-            ESP_LOGE(TAG, "连接失败，重新广播");
-            if (!ble_adv_active && has_free_connection_slot())
-            {
-                start_advertising();
-            }
-        }
-    }
-    else if (event->type == BLE_GAP_EVENT_DISCONNECT)
-    {
-        uint16_t conn_handle = event->disconnect.conn.conn_handle;
-
-        remove_connection(conn_handle);
-        ble_adv_active = false;
-        ESP_LOGI(TAG, "设备断开连接，conn_handle=%d，当前连接数=%d", conn_handle, conn_count);
-
-        if (!ble_adv_active && has_free_connection_slot())
-        {
-            start_advertising();
-        }
-    }
-    return 0;
-}
-
-static const struct ble_gatt_svc_def gatt_svcs[] =
-    {
-        {.type = BLE_GATT_SVC_TYPE_PRIMARY,
-         .uuid = BLE_UUID16_DECLARE(0x00FF),
-         .characteristics = (struct ble_gatt_chr_def[]){
-             // ESP32S3接收手机数据
-             {
-                 .uuid = BLE_UUID16_DECLARE(0xFF01),
-                 .access_cb = gatt_event_handler,
-                 .flags = BLE_GATT_CHR_F_WRITE,
-                 .val_handle = &rx_value_handler,
-                 .arg = NULL,
-             },
-             // ESP32S3向手机发送数据
-             {
-                 .uuid = BLE_UUID16_DECLARE(0xFF02),
-                 .access_cb = gatt_event_handler,
-                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
-                 .val_handle = &tx_value_handler,
-                 .arg = NULL,
-             },
-             {0}}},
-        {0}};
-
-void start_advertising(void)
-{
-    if (!has_free_connection_slot())
-    {
-        ble_adv_active = false;
-        ESP_LOGI(TAG, "已达到 2 台连接上限，停止广播");
+    if (connection == NULL || !connection->in_use || !connection->notify_enabled) {
         return;
     }
 
-    if (ble_adv_active)
+    struct os_mbuf *om = ble_hs_mbuf_from_flat(frame, length);
+    if (om == NULL) {
+        ESP_LOGE(TAG, "Unable to allocate notification buffer");
+        return;
+    }
+
+    int rc = ble_gatts_notify_custom(connection->handle, g_tx_value_handle, om);
+    if (rc != 0) {
+        ESP_LOGW(TAG, "Status notify failed: conn=%u rc=%d", connection->handle, rc);
+    }
+}
+
+static void notify_all_subscribers(void)
+{
+    uint8_t frame[TMY05_STATUS_FRAME_SIZE];
+    tmy05_state_t snapshot = get_state_snapshot();
+    size_t length = tmy05_protocol_build_status_frame(&snapshot, frame, sizeof(frame));
+    if (length == 0U) {
+        return;
+    }
+
+    ESP_LOG_BUFFER_HEX_LEVEL(TAG, frame, length, ESP_LOG_INFO);
+    for (size_t i = 0; i < MAX_PHONE_CONNECTIONS; ++i) {
+        notify_connection(&g_connections[i], frame, length);
+    }
+}
+
+static void consume_rx_bytes(phone_connection_t *connection, size_t count)
+{
+    if (count >= connection->rx_length) {
+        connection->rx_length = 0;
+        return;
+    }
+
+    memmove(connection->rx_stream,
+            connection->rx_stream + count,
+            connection->rx_length - count);
+    connection->rx_length -= count;
+}
+
+static void process_complete_app_frame(const uint8_t *frame, size_t length)
+{
+    tmy05_command_t command;
+    tmy05_state_t snapshot;
+    bool accepted;
+
+    portENTER_CRITICAL(&g_state_lock);
+    accepted = tmy05_protocol_apply_app_frame(frame, length, &g_fridge_state, &command);
+    snapshot = g_fridge_state;
+    portEXIT_CRITICAL(&g_state_lock);
+
+    if (!accepted) {
+        ESP_LOGW(TAG, "Unsupported or invalid TM-Y05 command frame");
+        return;
+    }
+
+    log_app_command(command, &snapshot);
+    notify_all_subscribers();
+}
+
+static void parse_rx_stream(phone_connection_t *connection)
+{
+    while (connection->rx_length > 0U) {
+        while (connection->rx_length > 0U && connection->rx_stream[0] != 0xA5U) {
+            consume_rx_bytes(connection, 1U);
+        }
+
+        if (connection->rx_length < 2U) {
+            return;
+        }
+
+        if (connection->rx_stream[1] != 0x5AU) {
+            consume_rx_bytes(connection, 1U);
+            continue;
+        }
+
+        if (connection->rx_length < 3U) {
+            return;
+        }
+
+        uint8_t data_length = connection->rx_stream[2];
+        size_t frame_length = (size_t)data_length + 3U;
+        if (data_length < MIN_DATA_LENGTH || frame_length > RX_STREAM_CAPACITY) {
+            ESP_LOGW(TAG, "Invalid data length: %u", data_length);
+            consume_rx_bytes(connection, 1U);
+            continue;
+        }
+
+        if (connection->rx_length < frame_length) {
+            return;
+        }
+
+        if (!tmy05_protocol_validate_frame(connection->rx_stream, frame_length)) {
+            ESP_LOGW(TAG, "Checksum/tail error, resynchronizing RX stream");
+            ESP_LOG_BUFFER_HEX_LEVEL(TAG,
+                                     connection->rx_stream,
+                                     frame_length,
+                                     ESP_LOG_WARN);
+            consume_rx_bytes(connection, 1U);
+            continue;
+        }
+
+        ESP_LOG_BUFFER_HEX_LEVEL(TAG,
+                                 connection->rx_stream,
+                                 frame_length,
+                                 ESP_LOG_INFO);
+        process_complete_app_frame(connection->rx_stream, frame_length);
+        consume_rx_bytes(connection, frame_length);
+    }
+}
+
+static int receive_app_data(uint16_t conn_handle, struct os_mbuf *om)
+{
+    phone_connection_t *connection = find_connection(conn_handle);
+    if (connection == NULL) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+
+    uint16_t incoming_length = OS_MBUF_PKTLEN(om);
+    if (incoming_length == 0U) {
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+
+    uint8_t incoming[RX_STREAM_CAPACITY];
+    if (incoming_length > sizeof(incoming)) {
+        ESP_LOGW(TAG, "Write too large: %u bytes", incoming_length);
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+
+    uint16_t copied = 0;
+    int rc = ble_hs_mbuf_to_flat(om, incoming, sizeof(incoming), &copied);
+    if (rc != 0 || copied != incoming_length) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+
+    if (connection->rx_length + copied > sizeof(connection->rx_stream)) {
+        ESP_LOGW(TAG, "RX stream overflow; clearing partial frame");
+        connection->rx_length = 0;
+    }
+
+    memcpy(connection->rx_stream + connection->rx_length, incoming, copied);
+    connection->rx_length += copied;
+    parse_rx_stream(connection);
+    return 0;
+}
+
+static int gatt_event_handler(uint16_t conn_handle,
+                              uint16_t attr_handle,
+                              struct ble_gatt_access_ctxt *ctxt,
+                              void *arg)
+{
+    (void)arg;
+
+    if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR &&
+        (attr_handle == g_rx_value_handle || attr_handle == g_tx_value_handle)) {
+        return receive_app_data(conn_handle, ctxt->om);
+    }
+
+    if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR && attr_handle == g_tx_value_handle) {
+        return append_status_to_mbuf(ctxt->om);
+    }
+
+    if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR && attr_handle == g_rx_value_handle) {
+        return 0;
+    }
+
+    return BLE_ATT_ERR_UNLIKELY;
+}
+
+static const struct ble_gatt_svc_def g_gatt_services[] = {
     {
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = &g_service_uuid.u,
+        .characteristics = (struct ble_gatt_chr_def[]) {
+            {
+                .uuid = BLE_UUID16_DECLARE(TMY05_APP_WRITE_UUID),
+                .access_cb = gatt_event_handler,
+                .flags = BLE_GATT_CHR_F_READ |
+                         BLE_GATT_CHR_F_WRITE |
+                         BLE_GATT_CHR_F_WRITE_NO_RSP,
+                .val_handle = &g_rx_value_handle,
+            },
+            {
+                .uuid = BLE_UUID16_DECLARE(TMY05_APP_NOTIFY_UUID),
+                .access_cb = gatt_event_handler,
+                .flags = BLE_GATT_CHR_F_READ |
+                         BLE_GATT_CHR_F_WRITE |
+                         BLE_GATT_CHR_F_NOTIFY,
+                .val_handle = &g_tx_value_handle,
+            },
+            {0},
+        },
+    },
+    {0},
+};
+
+void start_advertising(void)
+{
+    if (!has_free_connection_slot()) {
+        g_ble_adv_active = false;
+        ESP_LOGI(TAG, "Two phones connected; advertising stopped");
+        return;
+    }
+
+    if (ble_gap_adv_active()) {
+        g_ble_adv_active = true;
         return;
     }
 
     struct ble_hs_adv_fields fields = {0};
-    fields.name = (uint8_t *)DEVICE_NAME;
-    fields.name_len = strlen(DEVICE_NAME);
-    fields.name_is_complete = 1;
     fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
+    fields.name = (uint8_t *)g_device_name;
+    fields.name_len = strlen(g_device_name);
+    fields.name_is_complete = 1;
     fields.tx_pwr_lvl_is_present = 1;
     fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
+    fields.uuids16 = (ble_uuid16_t *)&g_service_uuid;
+    fields.num_uuids16 = 1;
+    fields.uuids16_is_complete = 1;
+
     int rc = ble_gap_adv_set_fields(&fields);
-    if (rc != 0)
-    {
-        ESP_LOGE(TAG, "广播内容设置失败");
+    if (rc != 0) {
+        ESP_LOGE(TAG, "Advertising fields failed: rc=%d", rc);
         return;
     }
-    struct ble_gap_adv_params adv_params = {
+
+    struct ble_gap_adv_params params = {
         .conn_mode = BLE_GAP_CONN_MODE_UND,
         .disc_mode = BLE_GAP_DISC_MODE_GEN,
-        .itvl_min = BLE_GAP_ADV_ITVL_MS(200),
-        .itvl_max = BLE_GAP_ADV_ITVL_MS(500),
+        .itvl_min = BLE_GAP_ADV_ITVL_MS(100),
+        .itvl_max = BLE_GAP_ADV_ITVL_MS(150),
     };
 
-    rc = ble_gap_adv_start(BLE_OWN_ADDR_PUBLIC,
+    rc = ble_gap_adv_start(g_own_addr_type,
                            NULL,
                            BLE_HS_FOREVER,
-                           &adv_params,
+                           &params,
                            gap_event_handler,
                            NULL);
-    if (rc != 0)
-    {
-        ESP_LOGE(TAG, "广播启动失败");
+    if (rc != 0) {
+        ESP_LOGE(TAG, "Advertising start failed: rc=%d", rc);
+        return;
     }
-    else
-    {
-        ESP_LOGE(TAG, "广播已启动，等待连接...");
-        ble_adv_active = true;
+
+    g_ble_adv_active = true;
+    ESP_LOGI(TAG, "Advertising as %s", g_device_name);
+}
+
+static int gap_event_handler(struct ble_gap_event *event, void *arg)
+{
+    (void)arg;
+
+    switch (event->type) {
+    case BLE_GAP_EVENT_CONNECT:
+        g_ble_adv_active = false;
+        if (event->connect.status != 0) {
+            ESP_LOGW(TAG, "Connection failed: status=%d", event->connect.status);
+            start_advertising();
+            return 0;
+        }
+
+        if (add_connection(event->connect.conn_handle) == NULL) {
+            ESP_LOGW(TAG, "Connection limit reached; disconnecting conn=%u",
+                     event->connect.conn_handle);
+            ble_gap_terminate(event->connect.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+            return 0;
+        }
+
+        ESP_LOGI(TAG, "Connected: conn=%u count=%u",
+                 event->connect.conn_handle,
+                 (unsigned int)connection_count());
+        start_advertising();
+        return 0;
+
+    case BLE_GAP_EVENT_DISCONNECT:
+        remove_connection(event->disconnect.conn.conn_handle);
+        ESP_LOGI(TAG, "Disconnected: conn=%u reason=%d",
+                 event->disconnect.conn.conn_handle,
+                 event->disconnect.reason);
+        start_advertising();
+        return 0;
+
+    case BLE_GAP_EVENT_ADV_COMPLETE:
+        g_ble_adv_active = false;
+        start_advertising();
+        return 0;
+
+    case BLE_GAP_EVENT_SUBSCRIBE: {
+        phone_connection_t *connection = find_connection(event->subscribe.conn_handle);
+        if (connection != NULL && event->subscribe.attr_handle == g_tx_value_handle) {
+            connection->notify_enabled = event->subscribe.cur_notify != 0;
+            ESP_LOGI(TAG, "FFF7 notifications %s: conn=%u",
+                     connection->notify_enabled ? "enabled" : "disabled",
+                     connection->handle);
+        }
+        return 0;
     }
+
+    case BLE_GAP_EVENT_MTU:
+        ESP_LOGI(TAG, "MTU updated: conn=%u mtu=%u",
+                 event->mtu.conn_handle,
+                 event->mtu.value);
+        return 0;
+
+    default:
+        return 0;
+    }
+}
+
+static void on_reset(int reason)
+{
+    g_ble_adv_active = false;
+    memset(g_connections, 0, sizeof(g_connections));
+    ESP_LOGE(TAG, "NimBLE host reset: reason=%d", reason);
 }
 
 static void on_sync(void)
 {
-    ESP_LOGE(TAG, "设备初始化完毕");
+    int rc = ble_hs_id_infer_auto(0, &g_own_addr_type);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "Cannot infer BLE address type: rc=%d", rc);
+        return;
+    }
+
+    uint8_t address[6];
+    rc = ble_hs_id_copy_addr(g_own_addr_type, address, NULL);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "Cannot read BLE address: rc=%d", rc);
+        return;
+    }
+
+    snprintf(g_device_name,
+             sizeof(g_device_name),
+             DEVICE_NAME_PREFIX "%02X%02X",
+             address[1],
+             address[0]);
+    rc = ble_svc_gap_device_name_set(g_device_name);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "Cannot set device name: rc=%d", rc);
+        return;
+    }
+
     start_advertising();
 }
 
-void host_task(void *arg)
+static void host_task(void *arg)
 {
+    (void)arg;
     nimble_port_run();
+    nimble_port_freertos_deinit();
 }
 
 void ble_init(void)
 {
-    nimble_port_init();
+    ESP_ERROR_CHECK(nimble_port_init());
     ble_svc_gap_init();
     ble_svc_gatt_init();
-    ble_svc_gap_device_name_set(DEVICE_NAME);
-    ble_gatts_count_cfg(gatt_svcs);
-    ble_gatts_add_svcs(gatt_svcs);
 
+    int rc = ble_gatts_count_cfg(g_gatt_services);
+    ESP_ERROR_CHECK(rc == 0 ? ESP_OK : ESP_FAIL);
+    rc = ble_gatts_add_svcs(g_gatt_services);
+    ESP_ERROR_CHECK(rc == 0 ? ESP_OK : ESP_FAIL);
+
+    ble_hs_cfg.reset_cb = on_reset;
     ble_hs_cfg.sync_cb = on_sync;
-
     nimble_port_freertos_init(host_task);
+}
+
+bool ble_tmy05_get_state(tmy05_state_t *state)
+{
+    if (state == NULL) {
+        return false;
+    }
+
+    *state = get_state_snapshot();
+    return true;
+}
+
+bool ble_tmy05_set_state(const tmy05_state_t *state)
+{
+    if (state == NULL || state->power > TMY05_POWER_ON ||
+        state->unit > TMY05_UNIT_FAHRENHEIT ||
+        state->mode > TMY05_MODE_HEATING ||
+        state->child_lock > TMY05_CHILD_LOCK_ON ||
+        state->fault_code > TMY05_FAULT_HIGH_TEMPERATURE) {
+        return false;
+    }
+
+    portENTER_CRITICAL(&g_state_lock);
+    g_fridge_state = *state;
+    portEXIT_CRITICAL(&g_state_lock);
+    notify_all_subscribers();
+    return true;
+}
+
+bool ble_tmy05_set_actual_temperature(int16_t temperature)
+{
+    portENTER_CRITICAL(&g_state_lock);
+    g_fridge_state.actual_temperature = temperature;
+    portEXIT_CRITICAL(&g_state_lock);
+    notify_all_subscribers();
+    return true;
+}
+
+bool ble_tmy05_set_fault(uint8_t fault_code)
+{
+    if (fault_code > TMY05_FAULT_HIGH_TEMPERATURE) {
+        return false;
+    }
+
+    portENTER_CRITICAL(&g_state_lock);
+    g_fridge_state.fault_code = fault_code;
+    portEXIT_CRITICAL(&g_state_lock);
+    notify_all_subscribers();
+    return true;
 }

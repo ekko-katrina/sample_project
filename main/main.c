@@ -1,13 +1,11 @@
-#include <stdio.h>
-#include "freertos/FreeRTOS.h" // 引入 FreeRTOS 基础定义, 例如 pdMS_TO_TICKS
-#include "freertos/task.h"     // 引入 FreeRTOS 任务延时函数 vTaskDelay
-#include "driver/gpio.h"       // 引入 FreeRTOS 任务延时函数 vTaskDelay
+#include "esp_err.h"
 #include "nvs_flash.h"
 #include "myble.h"
+#include "tmy05_console.h"
 
 void app_main(void)
 {
-
-    nvs_flash_init();
+    ESP_ERROR_CHECK(nvs_flash_init());
     ble_init();
+    tmy05_console_init();
 }

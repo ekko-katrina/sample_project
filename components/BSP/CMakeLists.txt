@@ -8,6 +8,7 @@ set(src_dirs
             WIFISTA
             WIFIAP
             MYNTC
+            # TM-Y05 BLE simulator and protocol sources
             MYBLE
             )
 
