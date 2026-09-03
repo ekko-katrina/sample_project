@@ -9,6 +9,7 @@
 #include "host/ble_gatt.h"
 #include "host/ble_gap.h"
 #include "host/ble_hs.h"
+#include "host/ble_hs_adv.h"
 #include "host/ble_hs_id.h"
 #include "host/ble_hs_mbuf.h"
 #include "host/util/util.h"
@@ -17,11 +18,8 @@
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
 
-#define TAG "TMY05-BLE"
-#define DEVICE_NAME_PREFIX "Aurora Y05_"
-#define TMY05_SERVICE_UUID 0xFFF0
-#define TMY05_APP_WRITE_UUID 0xFFF6
-#define TMY05_APP_NOTIFY_UUID 0xFFF7
+#define TAG "FRIDGE-BLE"
+#define FRIDGE_SERVICE_UUID 0xFFF0
 #define MAX_PHONE_CONNECTIONS 2U
 #define RX_STREAM_CAPACITY 64U
 #define MIN_DATA_LENGTH 3U
@@ -40,18 +38,16 @@ static uint16_t g_rx_value_handle;
 static uint16_t g_tx_value_handle;
 static phone_connection_t g_connections[MAX_PHONE_CONNECTIONS];
 static portMUX_TYPE g_state_lock = portMUX_INITIALIZER_UNLOCKED;
-static tmy05_state_t g_fridge_state = {
-    .power = TMY05_POWER_ON,
-    .unit = TMY05_UNIT_CELSIUS,
-    .mode = TMY05_MODE_COOLING,
-    .child_lock = TMY05_CHILD_LOCK_OFF,
-    .fault_code = TMY05_FAULT_NONE,
-    .target_temperature = -5,
-    .actual_temperature = 3,
-};
-static char g_device_name[sizeof(DEVICE_NAME_PREFIX) + 4U];
+static tmy05_state_t g_fridge_state;
+static ble_sim_profile_t g_active_profile = BLE_SIM_PROFILE_LEGACY_Y05;
+static const ble_sim_profile_info_t *g_profile_info;
+static char g_device_name[32];
+/* AD type 0x16 contains its UUID first, in little-endian byte order. */
+static uint8_t g_service_data[] = {0xF0, 0xFF, 0x54, 0x4D, 0x01, 0x04};
 
-static const ble_uuid16_t g_service_uuid = BLE_UUID16_INIT(TMY05_SERVICE_UUID);
+static const ble_uuid16_t g_service_uuid = BLE_UUID16_INIT(FRIDGE_SERVICE_UUID);
+static ble_uuid16_t g_write_uuid = BLE_UUID16_INIT(0xFFF6);
+static ble_uuid16_t g_notify_uuid = BLE_UUID16_INIT(0xFFF7);
 
 static int gap_event_handler(struct ble_gap_event *event, void *arg);
 
@@ -123,6 +119,14 @@ static tmy05_state_t get_state_snapshot(void)
 
 static const char *fault_text(uint8_t fault_code)
 {
+    if (g_profile_info != NULL && !g_profile_info->has_child_lock &&
+        fault_code <= 0x07U) {
+        static const char *const errors[] = {
+            "无故障", "Er0", "Er1", "Er2", "Er3", "Er4", "Er5", "Er6"
+        };
+        return errors[fault_code];
+    }
+
     switch (fault_code) {
     case TMY05_FAULT_NONE:
         return "无故障";
@@ -137,18 +141,44 @@ static const char *fault_text(uint8_t fault_code)
     }
 }
 
+static const char *mode_text(tmy05_mode_t mode)
+{
+    switch (mode) {
+    case TMY05_MODE_COOLING:
+        return "冷藏/制冷";
+    case TMY05_MODE_MAX:
+        return "MAX";
+    case TMY05_MODE_ECO:
+        return "ECO";
+    case TMY05_MODE_HEATING:
+        return "制热";
+    default:
+        return "未知";
+    }
+}
+
 static void log_state_summary(const tmy05_state_t *state)
 {
-    ESP_LOGI(TAG,
-             "当前状态：%s，%s，%s，童锁%s，目标温度=%d，实际温度=%d，故障=%s(%u)",
-             state->power == TMY05_POWER_ON ? "开机" : "关机",
-             state->unit == TMY05_UNIT_FAHRENHEIT ? "华氏度" : "摄氏度",
-             state->mode == TMY05_MODE_HEATING ? "制热" : "制冷",
-             state->child_lock == TMY05_CHILD_LOCK_ON ? "上锁" : "解锁",
-             state->target_temperature,
-             state->actual_temperature,
-             fault_text(state->fault_code),
-             state->fault_code);
+    if (g_profile_info->has_voltage) {
+        ESP_LOGI(TAG,
+                 "当前状态：%s，%s，%s，目标温度=%d，实际温度=%d，电压=%u.%02uV，故障=%s(%u)",
+                 state->power == TMY05_POWER_ON ? "开机" : "关机",
+                 state->unit == TMY05_UNIT_FAHRENHEIT ? "华氏度" : "摄氏度",
+                 mode_text(state->mode), state->target_temperature,
+                 state->actual_temperature,
+                 state->actual_voltage_centi_volts / 100U,
+                 state->actual_voltage_centi_volts % 100U,
+                 fault_text(state->fault_code), state->fault_code);
+    } else {
+        ESP_LOGI(TAG,
+                 "当前状态：%s，%s，%s，童锁%s，目标温度=%d，实际温度=%d，故障=%s(%u)",
+                 state->power == TMY05_POWER_ON ? "开机" : "关机",
+                 state->unit == TMY05_UNIT_FAHRENHEIT ? "华氏度" : "摄氏度",
+                 mode_text(state->mode),
+                 state->child_lock == TMY05_CHILD_LOCK_ON ? "上锁" : "解锁",
+                 state->target_temperature, state->actual_temperature,
+                 fault_text(state->fault_code), state->fault_code);
+    }
 }
 
 static void log_app_command(tmy05_command_t command, const tmy05_state_t *state)
@@ -165,7 +195,7 @@ static void log_app_command(tmy05_command_t command, const tmy05_state_t *state)
     case TMY05_COMMAND_SET_MODE:
         ESP_LOGI(TAG,
                  "收到App命令：切换为%s模式",
-                 state->mode == TMY05_MODE_HEATING ? "制热" : "制冷");
+                 mode_text(state->mode));
         break;
     case TMY05_COMMAND_SET_UNIT:
         ESP_LOGI(TAG,
@@ -190,9 +220,12 @@ static void log_app_command(tmy05_command_t command, const tmy05_state_t *state)
 
 static int append_status_to_mbuf(struct os_mbuf *om)
 {
-    uint8_t frame[TMY05_STATUS_FRAME_SIZE];
+    uint8_t frame[FRIDGE_MAX_STATUS_FRAME_SIZE];
     tmy05_state_t snapshot = get_state_snapshot();
-    size_t length = tmy05_protocol_build_status_frame(&snapshot, frame, sizeof(frame));
+    size_t length = fridge_protocol_build_status_frame(g_active_profile,
+                                                       &snapshot,
+                                                       frame,
+                                                       sizeof(frame));
 
     if (length == 0U || os_mbuf_append(om, frame, length) != 0) {
         return BLE_ATT_ERR_INSUFFICIENT_RES;
@@ -223,9 +256,12 @@ static void notify_connection(phone_connection_t *connection,
 
 static void notify_all_subscribers(void)
 {
-    uint8_t frame[TMY05_STATUS_FRAME_SIZE];
+    uint8_t frame[FRIDGE_MAX_STATUS_FRAME_SIZE];
     tmy05_state_t snapshot = get_state_snapshot();
-    size_t length = tmy05_protocol_build_status_frame(&snapshot, frame, sizeof(frame));
+    size_t length = fridge_protocol_build_status_frame(g_active_profile,
+                                                       &snapshot,
+                                                       frame,
+                                                       sizeof(frame));
     if (length == 0U) {
         return;
     }
@@ -256,12 +292,19 @@ static void process_complete_app_frame(const uint8_t *frame, size_t length)
     bool accepted;
 
     portENTER_CRITICAL(&g_state_lock);
-    accepted = tmy05_protocol_apply_app_frame(frame, length, &g_fridge_state, &command);
     snapshot = g_fridge_state;
+    accepted = fridge_protocol_apply_app_frame(g_active_profile,
+                                               frame,
+                                               length,
+                                               &snapshot,
+                                               &command);
+    if (accepted) {
+        g_fridge_state = snapshot;
+    }
     portEXIT_CRITICAL(&g_state_lock);
 
     if (!accepted) {
-        ESP_LOGW(TAG, "Unsupported or invalid TM-Y05 command frame");
+        ESP_LOGW(TAG, "当前档位不支持该命令，或命令参数无效");
         return;
     }
 
@@ -378,29 +421,31 @@ static int gatt_event_handler(uint16_t conn_handle,
     return BLE_ATT_ERR_UNLIKELY;
 }
 
+static struct ble_gatt_chr_def g_gatt_characteristics[] = {
+    {
+        .uuid = &g_write_uuid.u,
+        .access_cb = gatt_event_handler,
+        .flags = BLE_GATT_CHR_F_READ |
+                 BLE_GATT_CHR_F_WRITE |
+                 BLE_GATT_CHR_F_WRITE_NO_RSP,
+        .val_handle = &g_rx_value_handle,
+    },
+    {
+        .uuid = &g_notify_uuid.u,
+        .access_cb = gatt_event_handler,
+        .flags = BLE_GATT_CHR_F_READ |
+                 BLE_GATT_CHR_F_WRITE |
+                 BLE_GATT_CHR_F_NOTIFY,
+        .val_handle = &g_tx_value_handle,
+    },
+    {0},
+};
+
 static const struct ble_gatt_svc_def g_gatt_services[] = {
     {
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
         .uuid = &g_service_uuid.u,
-        .characteristics = (struct ble_gatt_chr_def[]) {
-            {
-                .uuid = BLE_UUID16_DECLARE(TMY05_APP_WRITE_UUID),
-                .access_cb = gatt_event_handler,
-                .flags = BLE_GATT_CHR_F_READ |
-                         BLE_GATT_CHR_F_WRITE |
-                         BLE_GATT_CHR_F_WRITE_NO_RSP,
-                .val_handle = &g_rx_value_handle,
-            },
-            {
-                .uuid = BLE_UUID16_DECLARE(TMY05_APP_NOTIFY_UUID),
-                .access_cb = gatt_event_handler,
-                .flags = BLE_GATT_CHR_F_READ |
-                         BLE_GATT_CHR_F_WRITE |
-                         BLE_GATT_CHR_F_NOTIFY,
-                .val_handle = &g_tx_value_handle,
-            },
-            {0},
-        },
+        .characteristics = g_gatt_characteristics,
     },
     {0},
 };
@@ -420,19 +465,41 @@ void start_advertising(void)
 
     struct ble_hs_adv_fields fields = {0};
     fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-    fields.name = (uint8_t *)g_device_name;
-    fields.name_len = strlen(g_device_name);
-    fields.name_is_complete = 1;
-    fields.tx_pwr_lvl_is_present = 1;
-    fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
     fields.uuids16 = (ble_uuid16_t *)&g_service_uuid;
     fields.num_uuids16 = 1;
     fields.uuids16_is_complete = 1;
+
+    if (g_profile_info->is_legacy) {
+        /* Keep the historical advertising payload byte-for-byte compatible. */
+        fields.name = (uint8_t *)g_device_name;
+        fields.name_len = strlen(g_device_name);
+        fields.name_is_complete = 1;
+        fields.tx_pwr_lvl_is_present = 1;
+        fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
+    } else {
+        g_service_data[5] = g_profile_info->model_id;
+        fields.svc_data_uuid16 = g_service_data;
+        fields.svc_data_uuid16_len = sizeof(g_service_data);
+    }
 
     int rc = ble_gap_adv_set_fields(&fields);
     if (rc != 0) {
         ESP_LOGE(TAG, "Advertising fields failed: rc=%d", rc);
         return;
+    }
+
+    if (!g_profile_info->is_legacy) {
+        struct ble_hs_adv_fields response = {0};
+        response.name = (uint8_t *)g_device_name;
+        response.name_len = strlen(g_device_name);
+        response.name_is_complete = 1;
+        response.tx_pwr_lvl_is_present = 1;
+        response.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
+        rc = ble_gap_adv_rsp_set_fields(&response);
+        if (rc != 0) {
+            ESP_LOGE(TAG, "Scan response fields failed: rc=%d", rc);
+            return;
+        }
     }
 
     struct ble_gap_adv_params params = {
@@ -454,7 +521,8 @@ void start_advertising(void)
     }
 
     g_ble_adv_active = true;
-    ESP_LOGI(TAG, "Advertising as %s", g_device_name);
+    ESP_LOGI(TAG, "广播已启动：%s（%s）", g_device_name,
+             g_profile_info->display_name);
 }
 
 static int gap_event_handler(struct ble_gap_event *event, void *arg)
@@ -500,7 +568,8 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
         phone_connection_t *connection = find_connection(event->subscribe.conn_handle);
         if (connection != NULL && event->subscribe.attr_handle == g_tx_value_handle) {
             connection->notify_enabled = event->subscribe.cur_notify != 0;
-            ESP_LOGI(TAG, "FFF7 notifications %s: conn=%u",
+            ESP_LOGI(TAG, "%04X notifications %s: conn=%u",
+                     g_profile_info->notify_uuid,
                      connection->notify_enabled ? "enabled" : "disabled",
                      connection->handle);
         }
@@ -542,9 +611,11 @@ static void on_sync(void)
 
     snprintf(g_device_name,
              sizeof(g_device_name),
-             DEVICE_NAME_PREFIX "%02X%02X",
+             "%s%02X%02X%s",
+             g_profile_info->device_name_prefix,
              address[1],
-             address[0]);
+             address[0],
+             g_active_profile == BLE_SIM_PROFILE_NEW_Y17 ? " JUNIPER" : "");
     rc = ble_svc_gap_device_name_set(g_device_name);
     if (rc != 0) {
         ESP_LOGE(TAG, "Cannot set device name: rc=%d", rc);
@@ -561,8 +632,38 @@ static void host_task(void *arg)
     nimble_port_freertos_deinit();
 }
 
-void ble_init(void)
+void ble_init(ble_sim_profile_t profile)
 {
+    if ((unsigned int)profile >= BLE_SIM_PROFILE_COUNT) {
+        profile = BLE_SIM_PROFILE_LEGACY_Y05;
+    }
+    g_active_profile = profile;
+    g_profile_info = ble_sim_profile_info(profile);
+    fridge_protocol_make_initial_state(profile, &g_fridge_state);
+
+    g_write_uuid.value = g_profile_info->write_uuid;
+    g_notify_uuid.value = g_profile_info->notify_uuid;
+    if (g_profile_info->is_legacy) {
+        g_gatt_characteristics[0].flags = BLE_GATT_CHR_F_READ |
+                                           BLE_GATT_CHR_F_WRITE |
+                                           BLE_GATT_CHR_F_WRITE_NO_RSP;
+        g_gatt_characteristics[1].flags = BLE_GATT_CHR_F_READ |
+                                           BLE_GATT_CHR_F_WRITE |
+                                           BLE_GATT_CHR_F_NOTIFY;
+    } else {
+        g_gatt_characteristics[0].flags = BLE_GATT_CHR_F_WRITE;
+        g_gatt_characteristics[1].flags = BLE_GATT_CHR_F_NOTIFY;
+    }
+
+    ESP_LOGI(TAG, "当前模拟：%s", g_profile_info->display_name);
+    if (g_profile_info->is_legacy) {
+        ESP_LOGI(TAG, "旧协议，无新协议 Service Data");
+    } else {
+        ESP_LOGI(TAG, "Service Data：54 4D 01 %02X", g_profile_info->model_id);
+    }
+    ESP_LOGI(TAG, "GATT：FFF0 / %04X / %04X",
+             g_profile_info->write_uuid, g_profile_info->notify_uuid);
+
     ESP_ERROR_CHECK(nimble_port_init());
     ble_svc_gap_init();
     ble_svc_gatt_init();
@@ -577,6 +678,11 @@ void ble_init(void)
     nimble_port_freertos_init(host_task);
 }
 
+ble_sim_profile_t ble_sim_get_active_profile(void)
+{
+    return g_active_profile;
+}
+
 bool ble_tmy05_get_state(tmy05_state_t *state)
 {
     if (state == NULL) {
@@ -589,11 +695,7 @@ bool ble_tmy05_get_state(tmy05_state_t *state)
 
 bool ble_tmy05_set_state(const tmy05_state_t *state)
 {
-    if (state == NULL || state->power > TMY05_POWER_ON ||
-        state->unit > TMY05_UNIT_FAHRENHEIT ||
-        state->mode > TMY05_MODE_HEATING ||
-        state->child_lock > TMY05_CHILD_LOCK_ON ||
-        state->fault_code > TMY05_FAULT_HIGH_TEMPERATURE) {
+    if (!fridge_protocol_validate_state(g_active_profile, state)) {
         return false;
     }
 
@@ -615,12 +717,25 @@ bool ble_tmy05_set_actual_temperature(int16_t temperature)
 
 bool ble_tmy05_set_fault(uint8_t fault_code)
 {
-    if (fault_code > TMY05_FAULT_HIGH_TEMPERATURE) {
+    if (fault_code > g_profile_info->maximum_fault_code) {
         return false;
     }
 
     portENTER_CRITICAL(&g_state_lock);
     g_fridge_state.fault_code = fault_code;
+    portEXIT_CRITICAL(&g_state_lock);
+    notify_all_subscribers();
+    return true;
+}
+
+bool ble_fridge_set_actual_voltage(uint16_t centi_volts)
+{
+    if (!g_profile_info->has_voltage) {
+        return false;
+    }
+
+    portENTER_CRITICAL(&g_state_lock);
+    g_fridge_state.actual_voltage_centi_volts = centi_volts;
     portEXIT_CRITICAL(&g_state_lock);
     notify_all_subscribers();
     return true;

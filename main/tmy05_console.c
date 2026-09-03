@@ -11,8 +11,13 @@
 #include "esp_log.h"
 #include "myble.h"
 
-#define TAG "TMY05-CONSOLE"
-#define CONSOLE_PROMPT "tmy05>"
+#define TAG "FRIDGE-CONSOLE"
+#define CONSOLE_PROMPT "fridge>"
+
+static const ble_sim_profile_info_t *active_profile(void)
+{
+    return ble_sim_profile_info(ble_sim_get_active_profile());
+}
 
 static const char *power_text(tmy05_power_t power)
 {
@@ -26,7 +31,18 @@ static const char *unit_text(tmy05_temperature_unit_t unit)
 
 static const char *mode_text(tmy05_mode_t mode)
 {
-    return mode == TMY05_MODE_HEATING ? "制热" : "制冷";
+    switch (mode) {
+    case TMY05_MODE_COOLING:
+        return active_profile()->has_child_lock ? "制冷" : "冷藏";
+    case TMY05_MODE_MAX:
+        return "MAX";
+    case TMY05_MODE_ECO:
+        return "ECO";
+    case TMY05_MODE_HEATING:
+        return "制热";
+    default:
+        return "未知";
+    }
 }
 
 static const char *lock_text(tmy05_child_lock_t child_lock)
@@ -36,6 +52,13 @@ static const char *lock_text(tmy05_child_lock_t child_lock)
 
 static const char *fault_text(uint8_t fault_code)
 {
+    if (!active_profile()->has_child_lock && fault_code <= 0x07U) {
+        static const char *const errors[] = {
+            "无故障", "Er0", "Er1", "Er2", "Er3", "Er4", "Er5", "Er6"
+        };
+        return errors[fault_code];
+    }
+
     switch (fault_code) {
     case TMY05_FAULT_NONE:
         return "无故障";
@@ -52,16 +75,21 @@ static const char *fault_text(uint8_t fault_code)
 
 static void print_state(const char *prefix, const tmy05_state_t *state)
 {
-    printf("%s电源=%s，单位=%s，模式=%s，童锁=%s，目标温度=%d，实际温度=%d，故障=%s(%u)\n",
-           prefix,
-           power_text(state->power),
-           unit_text(state->unit),
-           mode_text(state->mode),
-           lock_text(state->child_lock),
-           state->target_temperature,
-           state->actual_temperature,
-           fault_text(state->fault_code),
-           state->fault_code);
+    const ble_sim_profile_info_t *profile = active_profile();
+    printf("%s档位=%s，电源=%s，单位=%s，模式=%s，",
+           prefix, profile->display_name, power_text(state->power),
+           unit_text(state->unit), mode_text(state->mode));
+    if (profile->has_child_lock) {
+        printf("童锁=%s，", lock_text(state->child_lock));
+    }
+    printf("目标温度=%d，实际温度=%d，", state->target_temperature,
+           state->actual_temperature);
+    if (profile->has_voltage) {
+        printf("实际电压=%u.%02uV，",
+               state->actual_voltage_centi_volts / 100U,
+               state->actual_voltage_centi_volts % 100U);
+    }
+    printf("故障=%s(%u)\n", fault_text(state->fault_code), state->fault_code);
 }
 
 static bool get_state(tmy05_state_t *state)
@@ -138,6 +166,10 @@ static int power_command(int argc, char **argv)
 
 static int lock_command(int argc, char **argv)
 {
+    if (!active_profile()->has_child_lock) {
+        printf("当前 %s 协议没有童锁字段\n", active_profile()->display_name);
+        return 1;
+    }
     if (argc != 2) {
         printf("用法：lock on|off|toggle\n");
         return 1;
@@ -167,7 +199,7 @@ static int lock_command(int argc, char **argv)
 static int mode_command(int argc, char **argv)
 {
     if (argc != 2) {
-        printf("用法：mode cool|heat|toggle\n");
+        printf("用法：mode cool|max|eco|heat|toggle\n");
         return 1;
     }
 
@@ -178,12 +210,26 @@ static int mode_command(int argc, char **argv)
 
     if (strcmp(argv[1], "cool") == 0) {
         state.mode = TMY05_MODE_COOLING;
+    } else if (strcmp(argv[1], "max") == 0) {
+        state.mode = TMY05_MODE_MAX;
+    } else if (strcmp(argv[1], "eco") == 0) {
+        state.mode = TMY05_MODE_ECO;
     } else if (strcmp(argv[1], "heat") == 0) {
         state.mode = TMY05_MODE_HEATING;
     } else if (strcmp(argv[1], "toggle") == 0) {
-        state.mode = state.mode == TMY05_MODE_COOLING ? TMY05_MODE_HEATING : TMY05_MODE_COOLING;
+        uint8_t candidate = (uint8_t)state.mode;
+        do {
+            candidate = (candidate + 1U) % ((uint8_t)TMY05_MODE_HEATING + 1U);
+        } while ((active_profile()->supported_mode_mask & (1U << candidate)) == 0U);
+        state.mode = (tmy05_mode_t)candidate;
     } else {
-        printf("用法：mode cool|heat|toggle\n");
+        printf("用法：mode cool|max|eco|heat|toggle\n");
+        return 1;
+    }
+
+    if ((active_profile()->supported_mode_mask & (1U << state.mode)) == 0U) {
+        printf("%s 不支持 %s 模式\n",
+               active_profile()->display_name, mode_text(state.mode));
         return 1;
     }
 
@@ -275,8 +321,9 @@ static int fault_command(int argc, char **argv)
     char *end = NULL;
     long fault = strtol(argv[1], &end, 10);
     if (end == argv[1] || *end != '\0' || fault < TMY05_FAULT_NONE ||
-        fault > TMY05_FAULT_HIGH_TEMPERATURE) {
-        printf("故障码：0=无故障，1=NTC短路，2=NTC开路，3=75度高温保护\n");
+        fault > active_profile()->maximum_fault_code) {
+        printf("当前档位故障码范围：0 到 %u\n",
+               active_profile()->maximum_fault_code);
         return 1;
     }
 
@@ -288,6 +335,37 @@ static int fault_command(int argc, char **argv)
 
     char description[48];
     snprintf(description, sizeof(description), "故障状态改为%s", fault_text(state.fault_code));
+    return apply_body_operation(description, &state);
+}
+
+static int voltage_command(int argc, char **argv)
+{
+    if (!active_profile()->has_voltage) {
+        printf("当前 %s 状态帧没有电压字段\n", active_profile()->display_name);
+        return 1;
+    }
+    if (argc != 2) {
+        printf("用法：voltage <百分之一伏数值，例如 1265>\n");
+        return 1;
+    }
+
+    char *end = NULL;
+    errno = 0;
+    unsigned long voltage = strtoul(argv[1], &end, 10);
+    if (errno != 0 || end == argv[1] || *end != '\0' || voltage > UINT16_MAX) {
+        printf("电压传输值必须是 0 到 65535 的整数，例如 12.65V 输入 1265\n");
+        return 1;
+    }
+
+    tmy05_state_t state;
+    if (!get_state(&state)) {
+        return 1;
+    }
+    state.actual_voltage_centi_volts = (uint16_t)voltage;
+
+    char description[48];
+    snprintf(description, sizeof(description), "实际电压改为%lu.%02luV",
+             voltage / 100UL, voltage % 100UL);
     return apply_body_operation(description, &state);
 }
 
@@ -311,11 +389,12 @@ void tmy05_console_init(void)
     register_command("status", "显示当前冰箱完整状态", NULL, status_command);
     register_command("power", "模拟机身开关机", "<on|off|toggle>", power_command);
     register_command("lock", "模拟机身童锁操作", "<on|off|toggle>", lock_command);
-    register_command("mode", "模拟切换制冷/制热", "<cool|heat|toggle>", mode_command);
+    register_command("mode", "模拟切换工作模式", "<cool|max|eco|heat|toggle>", mode_command);
     register_command("unit", "模拟切换摄氏/华氏", "<c|f|toggle>", unit_command);
     register_command("target", "修改目标温度", "<temperature>", target_command);
     register_command("actual", "修改实际温度", "<temperature>", actual_command);
-    register_command("fault", "模拟故障码", "<0|1|2|3>", fault_command);
+    register_command("fault", "模拟故障码", "<0..7，取决于当前型号>", fault_command);
+    register_command("voltage", "修改实际电压传输值（V x 100）", "<centivolts>", voltage_command);
 
     esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
     repl_config.prompt = CONSOLE_PROMPT;
