@@ -37,7 +37,7 @@ static int test_initial_status_frames(void)
     };
     static const uint8_t expected_voltage_model[] = {
         0xA5, 0x5A, 0x0B, 0x00, 0x40, 0x00, 0xFF,
-        0xFB, 0x00, 0x03, 0x04, 0xF1, 0x46, 0xAA,
+        0xFB, 0x00, 0x03, 0x04, 0xF3, 0x44, 0xAA,
     };
     uint8_t frame[FRIDGE_MAX_STATUS_FRAME_SIZE];
     tmy05_state_t state;
@@ -95,6 +95,60 @@ static int test_model_specific_modes(void)
     return 0;
 }
 
+static int test_ota_frames(void)
+{
+    static const uint8_t query[] = {
+        0xA5, 0x5A, 0x04, 0xA0, 0x00, 0x5B, 0xAA,
+    };
+    static const uint8_t targeted_start[] = {
+        0xA5, 0x5A, 0x07, 0xA2, 0x03, 0x01, 0x00, 0x04, 0x5C, 0xAA,
+    };
+    static const uint8_t obsolete_start[] = {
+        0xA5, 0x5A, 0x04, 0xA2, 0x00, 0x59, 0xAA,
+    };
+    static const uint8_t expected_version[] = {
+        0xA5, 0x5A, 0x07, 0xA1, 0x03, 0x01, 0x03, 0x0A, 0x52, 0xAA,
+    };
+    static const uint8_t expected_error[] = {
+        0xA5, 0x5A, 0x05, 0xA3, 0x04, 0x02, 0x5F, 0xAA,
+    };
+    uint8_t frame[TMY05_OTA_VERSION_FRAME_SIZE];
+    tmy05_ota_request_t request;
+
+    CHECK(tmy05_protocol_parse_ota_request(query, sizeof(query), &request));
+    CHECK(request.command == TMY05_OTA_COMMAND_QUERY_VERSION);
+    CHECK(!tmy05_protocol_parse_ota_request(obsolete_start,
+                                             sizeof(obsolete_start), &request));
+    CHECK(tmy05_protocol_parse_ota_request(targeted_start,
+                                            sizeof(targeted_start), &request));
+    CHECK(request.command == TMY05_OTA_COMMAND_START);
+    CHECK(request.model_id == 0x03U);
+    CHECK(request.major == 0x01U && request.minor == 0x00U &&
+          request.patch == 0x04U);
+
+    uint8_t invalid[sizeof(query)];
+    for (size_t i = 0; i < sizeof(query); ++i) {
+        invalid[i] = query[i];
+    }
+    invalid[5] ^= 0x01U;
+    CHECK(!tmy05_protocol_parse_ota_request(invalid, sizeof(invalid), NULL));
+
+    size_t length = tmy05_protocol_build_ota_version_frame(
+        0x03, 0x01, 0x03, 0x0A, frame, sizeof(frame));
+    CHECK(length == sizeof(expected_version));
+    CHECK(bytes_equal(frame, expected_version, length));
+
+    length = tmy05_protocol_build_ota_status_frame(
+        TMY05_OTA_STATUS_ERROR, TMY05_OTA_ERROR_DOWNLOAD,
+        frame, sizeof(frame));
+    CHECK(length == sizeof(expected_error));
+    CHECK(bytes_equal(frame, expected_error, length));
+    CHECK(tmy05_protocol_build_ota_status_frame(
+              TMY05_OTA_STATUS_DOWNLOADING, 1U,
+              frame, sizeof(frame)) == 0U);
+    return 0;
+}
+
 int protocol_run_tests(void)
 {
     int result = test_profile_cycle();
@@ -105,7 +159,11 @@ int protocol_run_tests(void)
     if (result != 0) {
         return result;
     }
-    return test_model_specific_modes();
+    result = test_model_specific_modes();
+    if (result != 0) {
+        return result;
+    }
+    return test_ota_frames();
 }
 
 #if defined(PROTOCOL_TEST_NO_CRT)

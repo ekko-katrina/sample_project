@@ -13,6 +13,10 @@ extern "C" {
 #define TMY05_STATUS_FRAME_SIZE 12U
 #define FRIDGE_STATUS_FRAME_SIZE 14U
 #define FRIDGE_MAX_STATUS_FRAME_SIZE FRIDGE_STATUS_FRAME_SIZE
+#define TMY05_OTA_QUERY_COMMAND_FRAME_SIZE 7U
+#define TMY05_OTA_TARGET_COMMAND_FRAME_SIZE 10U
+#define TMY05_OTA_VERSION_FRAME_SIZE 10U
+#define TMY05_OTA_STATUS_FRAME_SIZE 8U
 
 typedef enum {
     BLE_SIM_PROFILE_LEGACY_Y05 = 0,
@@ -88,6 +92,41 @@ typedef enum {
     TMY05_COMMAND_SET_CHILD_LOCK = 0x06,
 } tmy05_command_t;
 
+typedef enum {
+    TMY05_OTA_COMMAND_QUERY_VERSION = 0xA0,
+    TMY05_OTA_COMMAND_VERSION = 0xA1,
+    TMY05_OTA_COMMAND_START = 0xA2,
+    TMY05_OTA_COMMAND_STATUS = 0xA3,
+} tmy05_ota_command_t;
+
+typedef struct {
+    tmy05_ota_command_t command;
+    uint8_t model_id;
+    uint8_t major;
+    uint8_t minor;
+    uint8_t patch;
+} tmy05_ota_request_t;
+
+typedef enum {
+    TMY05_OTA_STATUS_PREPARING = 0x00,
+    TMY05_OTA_STATUS_DOWNLOADING = 0x01,
+    TMY05_OTA_STATUS_VERIFYING = 0x02,
+    TMY05_OTA_STATUS_RESTARTING = 0x03,
+    TMY05_OTA_STATUS_ERROR = 0x04,
+} tmy05_ota_status_t;
+
+typedef enum {
+    TMY05_OTA_ERROR_NONE = 0x00,
+    TMY05_OTA_ERROR_NETWORK = 0x01,
+    TMY05_OTA_ERROR_DOWNLOAD = 0x02,
+    TMY05_OTA_ERROR_VERIFY = 0x03,
+    TMY05_OTA_ERROR_FLASH = 0x04,
+    TMY05_OTA_ERROR_VERSION = 0x05,
+    TMY05_OTA_ERROR_SPACE = 0x06,
+    TMY05_OTA_ERROR_TIMEOUT = 0x07,
+    TMY05_OTA_ERROR_UNKNOWN = 0x08,
+} tmy05_ota_error_t;
+
 const ble_sim_profile_info_t *ble_sim_profile_info(ble_sim_profile_t profile);
 ble_sim_profile_t ble_sim_profile_next(ble_sim_profile_t profile);
 
@@ -98,6 +137,20 @@ bool fridge_protocol_validate_state(ble_sim_profile_t profile,
 
 uint8_t tmy05_protocol_checksum(const uint8_t *data, size_t length);
 bool tmy05_protocol_validate_frame(const uint8_t *frame, size_t length);
+
+bool tmy05_protocol_parse_ota_request(const uint8_t *frame,
+                                      size_t length,
+                                      tmy05_ota_request_t *request);
+size_t tmy05_protocol_build_ota_version_frame(uint8_t model_id,
+                                              uint8_t major,
+                                              uint8_t minor,
+                                              uint8_t patch,
+                                              uint8_t *frame,
+                                              size_t capacity);
+size_t tmy05_protocol_build_ota_status_frame(tmy05_ota_status_t status,
+                                             uint8_t information,
+                                             uint8_t *frame,
+                                             size_t capacity);
 
 bool fridge_protocol_apply_app_frame(ble_sim_profile_t profile,
                                      const uint8_t *frame,

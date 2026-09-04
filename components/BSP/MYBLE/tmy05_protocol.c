@@ -119,7 +119,7 @@ void fridge_protocol_make_initial_state(ble_sim_profile_t profile,
         .fault_code = TMY05_FAULT_NONE,
         .target_temperature = -5,
         .actual_temperature = 3,
-        .actual_voltage_centi_volts = 1265,
+        .actual_voltage_centi_volts = 1267,
     };
 }
 
@@ -171,6 +171,93 @@ bool tmy05_protocol_validate_frame(const uint8_t *frame, size_t length)
     }
 
     return frame[length - 2U] == tmy05_protocol_checksum(frame, length - 2U);
+}
+
+bool tmy05_protocol_parse_ota_request(const uint8_t *frame,
+                                      size_t length,
+                                      tmy05_ota_request_t *request)
+{
+    if (frame == NULL || !tmy05_protocol_validate_frame(frame, length)) {
+        return false;
+    }
+
+    tmy05_ota_request_t parsed = {
+        .command = (tmy05_ota_command_t)frame[3],
+    };
+    if (parsed.command == TMY05_OTA_COMMAND_QUERY_VERSION) {
+        if (length != TMY05_OTA_QUERY_COMMAND_FRAME_SIZE ||
+            frame[2] != 0x04U || frame[4] != 0x00U) {
+            return false;
+        }
+    } else if (parsed.command == TMY05_OTA_COMMAND_START) {
+        if (length != TMY05_OTA_TARGET_COMMAND_FRAME_SIZE ||
+            frame[2] != 0x07U) {
+            return false;
+        }
+        parsed.model_id = frame[4];
+        parsed.major = frame[5];
+        parsed.minor = frame[6];
+        parsed.patch = frame[7];
+    } else {
+        return false;
+    }
+
+    if (request != NULL) {
+        *request = parsed;
+    }
+    return true;
+}
+
+static size_t build_ota_response(uint8_t command,
+                                 const uint8_t *payload,
+                                 size_t payload_length,
+                                 uint8_t *frame,
+                                 size_t capacity)
+{
+    size_t frame_length = payload_length + 6U;
+    if (frame == NULL || payload == NULL || payload_length > 252U ||
+        capacity < frame_length) {
+        return 0U;
+    }
+
+    frame[0] = TMY05_FRAME_HEADER_HIGH;
+    frame[1] = TMY05_FRAME_HEADER_LOW;
+    frame[2] = (uint8_t)(payload_length + 3U);
+    frame[3] = command;
+    for (size_t i = 0; i < payload_length; ++i) {
+        frame[4U + i] = payload[i];
+    }
+    frame[frame_length - 2U] = tmy05_protocol_checksum(frame,
+                                                       frame_length - 2U);
+    frame[frame_length - 1U] = TMY05_FRAME_TAIL;
+    return frame_length;
+}
+
+size_t tmy05_protocol_build_ota_version_frame(uint8_t model_id,
+                                              uint8_t major,
+                                              uint8_t minor,
+                                              uint8_t patch,
+                                              uint8_t *frame,
+                                              size_t capacity)
+{
+    const uint8_t payload[] = {model_id, major, minor, patch};
+    return build_ota_response(TMY05_OTA_COMMAND_VERSION,
+                              payload, sizeof(payload), frame, capacity);
+}
+
+size_t tmy05_protocol_build_ota_status_frame(tmy05_ota_status_t status,
+                                             uint8_t information,
+                                             uint8_t *frame,
+                                             size_t capacity)
+{
+    if (status > TMY05_OTA_STATUS_ERROR ||
+        (status != TMY05_OTA_STATUS_ERROR && information != 0U)) {
+        return 0U;
+    }
+
+    const uint8_t payload[] = {(uint8_t)status, information};
+    return build_ota_response(TMY05_OTA_COMMAND_STATUS,
+                              payload, sizeof(payload), frame, capacity);
 }
 
 static bool apply_control_value(const ble_sim_profile_info_t *info,

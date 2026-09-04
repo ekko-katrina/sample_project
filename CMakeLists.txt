@@ -7,4 +7,5 @@ set(EXTRA_COMPONENT_DIRS components/Middlewares)
 add_compile_options(-fdiagnostics-color=always)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+set(PROJECT_VER "1.0.4")
 project(sample_project)

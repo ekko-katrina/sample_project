@@ -6,9 +6,15 @@
 
 #include "tmy05_protocol.h"
 
+typedef bool (*ble_ota_start_handler_t)(const tmy05_ota_request_t *request);
+
 void start_advertising(void);
 
 void ble_init(ble_sim_profile_t profile);
+
+void ble_ota_set_start_handler(ble_ota_start_handler_t handler);
+
+void ble_ota_report_status(tmy05_ota_status_t status, uint8_t information);
 
 ble_sim_profile_t ble_sim_get_active_profile(void);
 

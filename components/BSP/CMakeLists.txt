@@ -7,6 +7,7 @@ set(src_dirs
             SPIFFS
             WIFISTA
             WIFIAP
+            WIFIPROV
             MYNTC
             # TM-Y05 BLE simulator and protocol sources
             MYBLE
@@ -21,6 +22,7 @@ set(include_dirs
             SPIFFS
             WIFISTA
             WIFIAP
+            WIFIPROV
             MYNTC
             MYBLE
             )
@@ -28,6 +30,11 @@ set(include_dirs
 
 set(requires
             esp_wifi
+            esp_http_server
+            esp_netif
+            esp_event
+            esp_app_format
+            nvs_flash
             driver
             spiffs
             bt)

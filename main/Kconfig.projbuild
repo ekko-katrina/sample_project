@@ -1,0 +1,32 @@
+menu "TMY05 firmware settings"
+
+    config TMY05_FW_VERSION_MAJOR
+        int "Firmware major version"
+        range 0 255
+        default 1
+
+    config TMY05_FW_VERSION_MINOR
+        int "Firmware minor version"
+        range 0 255
+        default 0
+
+    config TMY05_FW_VERSION_PATCH
+        int "Firmware patch version"
+        range 0 255
+        default 4
+
+    config TMY05_OTA_RELEASE_BASE_URL
+        string "HTTPS immutable release-manifest base URL"
+        default "https://app.temai.tech/ota-bin/releases"
+        help
+            Base URL for targeted A2 requests. The device appends
+            /<modelId>/<major>.<minor>.<patch>.json.
+
+    config TMY05_PROVISION_AP_PASSWORD
+        string "Provisioning access point password"
+        default "12345678"
+        help
+            WPA2 password for the TMY05-Setup-XXXX captive portal. It must have
+            at least eight characters.
+
+endmenu

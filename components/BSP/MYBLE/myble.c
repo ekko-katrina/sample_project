@@ -1,8 +1,10 @@
 #include "myble.h"
+#include "sdkconfig.h"
 
 #include <stdio.h>
 #include <string.h>
 
+#include "esp_app_desc.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -41,6 +43,7 @@ static portMUX_TYPE g_state_lock = portMUX_INITIALIZER_UNLOCKED;
 static tmy05_state_t g_fridge_state;
 static ble_sim_profile_t g_active_profile = BLE_SIM_PROFILE_LEGACY_Y05;
 static const ble_sim_profile_info_t *g_profile_info;
+static ble_ota_start_handler_t g_ota_start_handler;
 static char g_device_name[32];
 /* AD type 0x16 contains its UUID first, in little-endian byte order. */
 static uint8_t g_service_data[] = {0xF0, 0xFF, 0x54, 0x4D, 0x01, 0x04};
@@ -272,6 +275,30 @@ static void notify_all_subscribers(void)
     }
 }
 
+void ble_ota_report_status(tmy05_ota_status_t status, uint8_t information)
+{
+    uint8_t frame[TMY05_OTA_STATUS_FRAME_SIZE];
+    size_t length = tmy05_protocol_build_ota_status_frame(status,
+                                                          information,
+                                                          frame,
+                                                          sizeof(frame));
+    if (length == 0U) {
+        ESP_LOGE(TAG, "Invalid OTA status: status=%u information=%u",
+                 (unsigned int)status, information);
+        return;
+    }
+
+    ESP_LOG_BUFFER_HEX_LEVEL(TAG, frame, length, ESP_LOG_INFO);
+    for (size_t i = 0; i < MAX_PHONE_CONNECTIONS; ++i) {
+        notify_connection(&g_connections[i], frame, length);
+    }
+}
+
+void ble_ota_set_start_handler(ble_ota_start_handler_t handler)
+{
+    g_ota_start_handler = handler;
+}
+
 static void consume_rx_bytes(phone_connection_t *connection, size_t count)
 {
     if (count >= connection->rx_length) {
@@ -285,11 +312,90 @@ static void consume_rx_bytes(phone_connection_t *connection, size_t count)
     connection->rx_length -= count;
 }
 
-static void process_complete_app_frame(const uint8_t *frame, size_t length)
+static void get_firmware_version(uint8_t *major,
+                                 uint8_t *minor,
+                                 uint8_t *patch)
+{
+    unsigned int parsed_major;
+    unsigned int parsed_minor;
+    unsigned int parsed_patch;
+    const esp_app_desc_t *app_desc = esp_app_get_description();
+
+    if (sscanf(app_desc->version, "%u.%u.%u",
+               &parsed_major, &parsed_minor, &parsed_patch) == 3 &&
+        parsed_major <= UINT8_MAX && parsed_minor <= UINT8_MAX &&
+        parsed_patch <= UINT8_MAX) {
+        *major = (uint8_t)parsed_major;
+        *minor = (uint8_t)parsed_minor;
+        *patch = (uint8_t)parsed_patch;
+        return;
+    }
+
+    ESP_LOGW(TAG, "无法解析应用版本 '%s'，使用 Kconfig 版本", app_desc->version);
+    *major = CONFIG_TMY05_FW_VERSION_MAJOR;
+    *minor = CONFIG_TMY05_FW_VERSION_MINOR;
+    *patch = CONFIG_TMY05_FW_VERSION_PATCH;
+}
+
+static bool process_ota_frame(phone_connection_t *connection,
+                              const uint8_t *frame,
+                              size_t length)
+{
+    if (g_profile_info->is_legacy) {
+        return false;
+    }
+
+    tmy05_ota_request_t request;
+    if (!tmy05_protocol_parse_ota_request(frame, length, &request)) {
+        return false;
+    }
+
+    if (request.command == TMY05_OTA_COMMAND_QUERY_VERSION) {
+        uint8_t major;
+        uint8_t minor;
+        uint8_t patch;
+        get_firmware_version(&major, &minor, &patch);
+
+        uint8_t response[TMY05_OTA_VERSION_FRAME_SIZE];
+        size_t response_length = tmy05_protocol_build_ota_version_frame(
+            g_profile_info->model_id,
+            major,
+            minor,
+            patch,
+            response,
+            sizeof(response));
+        ESP_LOGI(TAG, "收到App命令：查询固件版本 %u.%u.%u",
+                 major, minor, patch);
+        notify_connection(connection, response, response_length);
+        return true;
+    }
+
+    ESP_LOGI(TAG, "收到App命令：开始 OTA，目标 %u/%u.%u.%u",
+             request.model_id, request.major, request.minor, request.patch);
+    if (request.model_id != g_profile_info->model_id) {
+        ESP_LOGE(TAG, "OTA 目标型号与当前设备不一致");
+        ble_ota_report_status(TMY05_OTA_STATUS_ERROR,
+                              TMY05_OTA_ERROR_VERSION);
+        return true;
+    }
+    if (g_ota_start_handler == NULL || !g_ota_start_handler(&request)) {
+        ble_ota_report_status(TMY05_OTA_STATUS_ERROR,
+                              TMY05_OTA_ERROR_UNKNOWN);
+    }
+    return true;
+}
+
+static void process_complete_app_frame(phone_connection_t *connection,
+                                       const uint8_t *frame,
+                                       size_t length)
 {
     tmy05_command_t command;
     tmy05_state_t snapshot;
     bool accepted;
+
+    if (process_ota_frame(connection, frame, length)) {
+        return;
+    }
 
     portENTER_CRITICAL(&g_state_lock);
     snapshot = g_fridge_state;
@@ -358,7 +464,9 @@ static void parse_rx_stream(phone_connection_t *connection)
                                  connection->rx_stream,
                                  frame_length,
                                  ESP_LOG_INFO);
-        process_complete_app_frame(connection->rx_stream, frame_length);
+        process_complete_app_frame(connection,
+                                   connection->rx_stream,
+                                   frame_length);
         consume_rx_bytes(connection, frame_length);
     }
 }
