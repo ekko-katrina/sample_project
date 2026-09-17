@@ -1,0 +1,64 @@
+// 精简 CarServer 协议：仅包含解析 DriveState 所需的 message 与字段。
+// 与 vehicle-command Go SDK 的 car_server.proto / vehicle.proto / common.proto 包名、消息名、字段号一致；
+// 未在此声明的字段在解码时会被 protobuf-c 自动跳过。
+// 参见：vehicle-command/pkg/protocol/protobuf/car_server.proto (Response)、vehicle.proto (VehicleData, DriveState, ShiftState)、common.proto (Void)
+syntax = "proto3";
+
+package CarServer;
+
+option go_package = "github.com/teslamotors/vehicle-command/pkg/protocol/protobuf/carserver";
+
+// 空消息，用于 oneof 选项（与 vehicle-command common.proto 的 Void 一致）
+message Void {}
+
+// 档位状态（vehicle.proto ShiftState）。oneof type：仅解析用到的 1–6，对应 P/R/N/D 等
+message ShiftState {
+    oneof type {
+        Void Invalid = 1;
+        Void P = 2;
+        Void R = 3;
+        Void N = 4;
+        Void D = 5;
+        Void SNA = 6;  // Shift Not Available
+    }
+}
+
+// 行驶状态（vehicle.proto DriveState）。仅定义当前解析的字段；完整定义含 timestamp、active_route_* 等
+message DriveState {
+    ShiftState shift_state = 1;  // 档位状态
+    uint32 speed = 102;                           // 车速（原始整型，部分固件用 speed_float）
+    int32 power = 103;                           // 功率 kW，正为驱动、负为回收
+    int32 odometer_in_hundredths_of_a_mile = 105; // 里程，百分之一英里
+    float speed_float = 106;                     // 车速浮点 km/h
+}
+
+// 车辆数据（vehicle.proto VehicleData）。完整定义含 charge_state、climate_state、location_state 等；此处仅取 drive_state
+message VehicleData {
+    DriveState drive_state = 5;
+}
+
+// CarServer 响应（car_server.proto Response）。完整定义含 actionStatus、getSessionInfoResponse 等；此处仅取 vehicleData 用于解析 DriveState
+message Response {
+    VehicleData vehicleData = 2;
+}
+
+// ---------- 请求侧：用于构建 GetDriveState 请求（Action → VehicleAction → GetVehicleData → GetDriveState） ----------
+
+// 空消息（car_server.proto GetDriveState）
+message GetDriveState {
+}
+
+// 请求车辆数据（car_server.proto GetVehicleData）。此处仅用 getDriveState = 4
+message GetVehicleData {
+    GetDriveState getDriveState = 4;
+}
+
+// 车辆动作（car_server.proto VehicleAction）。此处仅用 getVehicleData = 1
+message VehicleAction {
+    GetVehicleData getVehicleData = 1;
+}
+
+// CarServer 请求动作（car_server.proto Action）。此处仅用 vehicleAction = 2
+message Action {
+    VehicleAction vehicleAction = 2;
+}

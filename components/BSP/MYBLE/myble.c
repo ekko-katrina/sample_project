@@ -1,5 +1,7 @@
 #include "myble.h"
 #include "sdkconfig.h"
+#include "wifi_provisioning.h"
+#include "tesla_link.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -8,6 +10,8 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "host/ble_att.h"
 #include "host/ble_gatt.h"
 #include "host/ble_gap.h"
 #include "host/ble_hs.h"
@@ -23,7 +27,7 @@
 #define TAG "FRIDGE-BLE"
 #define FRIDGE_SERVICE_UUID 0xFFF0
 #define MAX_PHONE_CONNECTIONS 2U
-#define RX_STREAM_CAPACITY 64U
+#define RX_STREAM_CAPACITY 160U
 #define MIN_DATA_LENGTH 3U
 
 typedef struct {
@@ -40,6 +44,7 @@ static uint16_t g_rx_value_handle;
 static uint16_t g_tx_value_handle;
 static phone_connection_t g_connections[MAX_PHONE_CONNECTIONS];
 static portMUX_TYPE g_state_lock = portMUX_INITIALIZER_UNLOCKED;
+static SemaphoreHandle_t g_notify_mutex;
 static tmy05_state_t g_fridge_state;
 static ble_sim_profile_t g_active_profile = BLE_SIM_PROFILE_LEGACY_Y05;
 static const ble_sim_profile_info_t *g_profile_info;
@@ -238,26 +243,77 @@ static int append_status_to_mbuf(struct os_mbuf *om)
 }
 
 static void notify_connection(phone_connection_t *connection,
-                              const uint8_t *frame,
-                              size_t length)
+                               const uint8_t *frame,
+                               size_t length)
 {
     if (connection == NULL || !connection->in_use || !connection->notify_enabled) {
         return;
     }
-
-    struct os_mbuf *om = ble_hs_mbuf_from_flat(frame, length);
-    if (om == NULL) {
-        ESP_LOGE(TAG, "Unable to allocate notification buffer");
+    if (g_notify_mutex != NULL &&
+        xSemaphoreTake(g_notify_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
+        ESP_LOGW(TAG, "Notify queue busy: conn=%u", connection->handle);
         return;
     }
 
-    int rc = ble_gatts_notify_custom(connection->handle, g_tx_value_handle, om);
-    if (rc != 0) {
-        ESP_LOGW(TAG, "Status notify failed: conn=%u rc=%d", connection->handle, rc);
+    uint16_t mtu = ble_att_mtu(connection->handle);
+    size_t chunk_capacity = mtu > 3U ? (size_t)mtu - 3U : 20U;
+    for (size_t offset = 0U; offset < length; offset += chunk_capacity) {
+        size_t remaining = length - offset;
+        size_t chunk_length = remaining < chunk_capacity
+                                  ? remaining
+                                  : chunk_capacity;
+        struct os_mbuf *om = ble_hs_mbuf_from_flat(frame + offset,
+                                                   chunk_length);
+        if (om == NULL) {
+            ESP_LOGE(TAG, "Unable to allocate notification buffer");
+            if (g_notify_mutex != NULL) {
+                xSemaphoreGive(g_notify_mutex);
+            }
+            return;
+        }
+
+        int rc = ble_gatts_notify_custom(connection->handle,
+                                         g_tx_value_handle, om);
+        if (rc != 0) {
+            ESP_LOGW(TAG, "Notify failed: conn=%u rc=%d",
+                     connection->handle, rc);
+            if (g_notify_mutex != NULL) {
+                xSemaphoreGive(g_notify_mutex);
+            }
+            return;
+        }
+    }
+    if (g_notify_mutex != NULL) {
+        xSemaphoreGive(g_notify_mutex);
     }
 }
 
-static void notify_all_subscribers(void)
+static void notify_wifi_provisioning(uint16_t connection_handle,
+                                     const uint8_t *frame,
+                                     size_t length)
+{
+    notify_connection(find_connection(connection_handle), frame, length);
+}
+
+static void notify_tesla_link(uint16_t connection_handle,
+                              const uint8_t *frame,
+                              size_t length)
+{
+    notify_connection(find_connection(connection_handle), frame, length);
+}
+
+static size_t notify_subscriber_count(void)
+{
+    size_t count = 0U;
+    for (size_t i = 0U; i < MAX_PHONE_CONNECTIONS; ++i) {
+        if (g_connections[i].in_use && g_connections[i].notify_enabled) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+static void notify_all_subscribers(const char *reason, bool proactive)
 {
     uint8_t frame[FRIDGE_MAX_STATUS_FRAME_SIZE];
     tmy05_state_t snapshot = get_state_snapshot();
@@ -269,6 +325,12 @@ static void notify_all_subscribers(void)
         return;
     }
 
+    ESP_LOGI(TAG,
+             "时间=%lld ms，ESP32%s全状态：原因=%s，Notify订阅数=%u",
+             (long long)esp_log_timestamp(),
+             proactive ? "主动上报" : "响应查询上报",
+             reason != NULL ? reason : "未指定",
+             (unsigned int)notify_subscriber_count());
     ESP_LOG_BUFFER_HEX_LEVEL(TAG, frame, length, ESP_LOG_INFO);
     for (size_t i = 0; i < MAX_PHONE_CONNECTIONS; ++i) {
         notify_connection(&g_connections[i], frame, length);
@@ -393,6 +455,16 @@ static void process_complete_app_frame(phone_connection_t *connection,
     tmy05_state_t snapshot;
     bool accepted;
 
+    if (tesla_link_handle_ble_frame(connection->handle, frame, length)) {
+        return;
+    }
+
+    if (!g_profile_info->is_legacy &&
+        wifi_provisioning_handle_ble_frame(connection->handle,
+                                            frame, length)) {
+        return;
+    }
+
     if (process_ota_frame(connection, frame, length)) {
         return;
     }
@@ -415,7 +487,11 @@ static void process_complete_app_frame(phone_connection_t *connection,
     }
 
     log_app_command(command, &snapshot);
-    notify_all_subscribers();
+    if (command == TMY05_COMMAND_GET_STATE) {
+        notify_all_subscribers("App获取全状态命令", false);
+    } else {
+        notify_all_subscribers("收到App控制命令", true);
+    }
 }
 
 static void parse_rx_stream(phone_connection_t *connection)
@@ -460,10 +536,20 @@ static void parse_rx_stream(phone_connection_t *connection)
             continue;
         }
 
-        ESP_LOG_BUFFER_HEX_LEVEL(TAG,
-                                 connection->rx_stream,
-                                 frame_length,
-                                 ESP_LOG_INFO);
+        if (connection->rx_stream[3] == 0xB4U) {
+            uint16_t request_id = frame_length >= 8U
+                                      ? (uint16_t)(((uint16_t)connection->rx_stream[4] << 8U) |
+                                                   connection->rx_stream[5])
+                                      : 0U;
+            ESP_LOGI(TAG,
+                     "收到 BLE 配网凭据: request=%u length=%u password=<redacted>",
+                     request_id, (unsigned int)frame_length);
+        } else {
+            ESP_LOG_BUFFER_HEX_LEVEL(TAG,
+                                     connection->rx_stream,
+                                     frame_length,
+                                     ESP_LOG_INFO);
+        }
         process_complete_app_frame(connection,
                                    connection->rx_stream,
                                    frame_length);
@@ -660,6 +746,9 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg)
         return 0;
 
     case BLE_GAP_EVENT_DISCONNECT:
+        tesla_link_handle_phone_disconnect(event->disconnect.conn.conn_handle);
+        wifi_provisioning_handle_ble_disconnect(
+            event->disconnect.conn.conn_handle);
         remove_connection(event->disconnect.conn.conn_handle);
         ESP_LOGI(TAG, "Disconnected: conn=%u reason=%d",
                  event->disconnect.conn.conn_handle,
@@ -748,6 +837,12 @@ void ble_init(ble_sim_profile_t profile)
     g_active_profile = profile;
     g_profile_info = ble_sim_profile_info(profile);
     fridge_protocol_make_initial_state(profile, &g_fridge_state);
+    wifi_provisioning_set_ble_notify_handler(notify_wifi_provisioning);
+    tesla_link_set_ble_notify_handler(notify_tesla_link);
+    if (g_notify_mutex == NULL) {
+        g_notify_mutex = xSemaphoreCreateMutex();
+        ESP_ERROR_CHECK(g_notify_mutex != NULL ? ESP_OK : ESP_ERR_NO_MEM);
+    }
 
     g_write_uuid.value = g_profile_info->write_uuid;
     g_notify_uuid.value = g_profile_info->notify_uuid;
@@ -810,7 +905,7 @@ bool ble_tmy05_set_state(const tmy05_state_t *state)
     portENTER_CRITICAL(&g_state_lock);
     g_fridge_state = *state;
     portEXIT_CRITICAL(&g_state_lock);
-    notify_all_subscribers();
+    notify_all_subscribers("冰箱完整状态改变", true);
     return true;
 }
 
@@ -819,7 +914,7 @@ bool ble_tmy05_set_actual_temperature(int16_t temperature)
     portENTER_CRITICAL(&g_state_lock);
     g_fridge_state.actual_temperature = temperature;
     portEXIT_CRITICAL(&g_state_lock);
-    notify_all_subscribers();
+    notify_all_subscribers("实际温度改变", true);
     return true;
 }
 
@@ -832,7 +927,7 @@ bool ble_tmy05_set_fault(uint8_t fault_code)
     portENTER_CRITICAL(&g_state_lock);
     g_fridge_state.fault_code = fault_code;
     portEXIT_CRITICAL(&g_state_lock);
-    notify_all_subscribers();
+    notify_all_subscribers("故障状态改变", true);
     return true;
 }
 
@@ -845,6 +940,22 @@ bool ble_fridge_set_actual_voltage(uint16_t centi_volts)
     portENTER_CRITICAL(&g_state_lock);
     g_fridge_state.actual_voltage_centi_volts = centi_volts;
     portEXIT_CRITICAL(&g_state_lock);
-    notify_all_subscribers();
+    notify_all_subscribers("实际电压改变", true);
     return true;
+}
+
+void ble_phone_advertising_pause(void)
+{
+    if (ble_gap_adv_active()) {
+        int rc = ble_gap_adv_stop();
+        if (rc != 0 && rc != BLE_HS_EALREADY) {
+            ESP_LOGW(TAG, "Unable to pause phone advertising: rc=%d", rc);
+        }
+    }
+    g_ble_adv_active = false;
+}
+
+void ble_phone_advertising_resume(void)
+{
+    start_advertising();
 }

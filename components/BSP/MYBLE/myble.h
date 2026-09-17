@@ -28,4 +28,7 @@ bool ble_tmy05_set_fault(uint8_t fault_code);
 
 bool ble_fridge_set_actual_voltage(uint16_t centi_volts);
 
+void ble_phone_advertising_pause(void);
+void ble_phone_advertising_resume(void);
+
 #endif

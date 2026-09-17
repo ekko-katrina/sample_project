@@ -5,6 +5,7 @@
 #include "ble_profile_switch.h"
 #include "ota_service.h"
 #include "wifi_provisioning.h"
+#include "tesla_link.h"
 
 void app_main(void)
 {
@@ -17,6 +18,7 @@ void app_main(void)
 
     ble_sim_profile_t profile = ble_profile_load();
     ble_init(profile);
+    ESP_ERROR_CHECK(tesla_link_start());
     ESP_ERROR_CHECK(wifi_provisioning_start());
     tmy05_console_init();
     ble_profile_switch_button_start(profile);
