@@ -14,6 +14,11 @@ static bool bytes_equal(const uint8_t *left, const uint8_t *right, size_t length
 
 static int test_profile_cycle(void)
 {
+    const ble_sim_profile_info_t *legacy =
+        ble_sim_profile_info(BLE_SIM_PROFILE_LEGACY_Y05);
+    CHECK(legacy->write_uuid == 0xFFF7);
+    CHECK(legacy->notify_uuid == 0xFFF7);
+
     ble_sim_profile_t profile = BLE_SIM_PROFILE_LEGACY_Y05;
     const ble_sim_profile_t expected[] = {
         BLE_SIM_PROFILE_NEW_Y17,
@@ -95,6 +100,35 @@ static int test_model_specific_modes(void)
     return 0;
 }
 
+static int test_temperature_unit_conversion(void)
+{
+    static const uint8_t set_fahrenheit[] = {
+        0xA5, 0x5A, 0x06, 0x04, 0x10, 0x00, 0x00, 0xED, 0xAA,
+    };
+    tmy05_state_t state;
+    tmy05_command_t command;
+    fridge_protocol_make_initial_state(BLE_SIM_PROFILE_NEW_Y05, &state);
+
+    CHECK(fridge_protocol_change_unit(&state, TMY05_UNIT_FAHRENHEIT));
+    CHECK(state.unit == TMY05_UNIT_FAHRENHEIT);
+    CHECK(state.target_temperature == 23);
+    CHECK(state.actual_temperature == 37);
+    CHECK(fridge_protocol_change_unit(&state, TMY05_UNIT_CELSIUS));
+    CHECK(state.target_temperature == -5);
+    CHECK(state.actual_temperature == 3);
+
+    fridge_protocol_make_initial_state(BLE_SIM_PROFILE_NEW_Y05, &state);
+    CHECK(fridge_protocol_apply_app_frame(BLE_SIM_PROFILE_NEW_Y05,
+                                          set_fahrenheit,
+                                          sizeof(set_fahrenheit),
+                                          &state, &command));
+    CHECK(command == TMY05_COMMAND_SET_UNIT);
+    CHECK(state.unit == TMY05_UNIT_FAHRENHEIT);
+    CHECK(state.target_temperature == 23);
+    CHECK(state.actual_temperature == 37);
+    return 0;
+}
+
 static int test_ota_frames(void)
 {
     static const uint8_t query[] = {
@@ -160,6 +194,10 @@ int protocol_run_tests(void)
         return result;
     }
     result = test_model_specific_modes();
+    if (result != 0) {
+        return result;
+    }
+    result = test_temperature_unit_conversion();
     if (result != 0) {
         return result;
     }

@@ -1,4 +1,5 @@
 #include "ota_service.h"
+#include "mqtt_service.h"
 
 #include <inttypes.h>
 #include <stdbool.h>
@@ -484,6 +485,7 @@ static void ota_update_task(void *argument)
     ble_ota_report_status(TMY05_OTA_STATUS_RESTARTING,
                           TMY05_OTA_ERROR_NONE);
     vTaskDelay(pdMS_TO_TICKS(750));
+    mqtt_service_prepare_restart();
     esp_restart();
 }
 

@@ -15,7 +15,7 @@ static const ble_sim_profile_info_t g_profiles[BLE_SIM_PROFILE_COUNT] = {
         .display_name = "旧版 Y05",
         .device_name_prefix = "Aurora Y05_",
         .model_id = 0x04,
-        .write_uuid = 0xFFF6,
+        .write_uuid = 0xFFF7,
         .notify_uuid = 0xFFF7,
         .is_legacy = true,
         .has_child_lock = true,
@@ -137,6 +137,53 @@ bool fridge_protocol_validate_state(ble_sim_profile_t profile,
     }
 
     return info->has_child_lock || state->child_lock == TMY05_CHILD_LOCK_OFF;
+}
+
+static int32_t divide_round_nearest(int32_t numerator, int32_t denominator)
+{
+    if (numerator >= 0) {
+        return (numerator + denominator / 2) / denominator;
+    }
+    return -((-numerator + denominator / 2) / denominator);
+}
+
+static bool convert_temperature(int16_t input, tmy05_temperature_unit_t from,
+                                int16_t *output)
+{
+    int32_t converted;
+    if (from == TMY05_UNIT_CELSIUS) {
+        converted = divide_round_nearest((int32_t)input * 9, 5) + 32;
+    } else {
+        converted = divide_round_nearest(((int32_t)input - 32) * 5, 9);
+    }
+    if (converted < INT16_MIN || converted > INT16_MAX) {
+        return false;
+    }
+    *output = (int16_t)converted;
+    return true;
+}
+
+bool fridge_protocol_change_unit(tmy05_state_t *state,
+                                 tmy05_temperature_unit_t unit)
+{
+    if (state == NULL || unit > TMY05_UNIT_FAHRENHEIT ||
+        state->unit > TMY05_UNIT_FAHRENHEIT) {
+        return false;
+    }
+    if (state->unit == unit) {
+        return true;
+    }
+
+    int16_t target;
+    int16_t actual;
+    if (!convert_temperature(state->target_temperature, state->unit, &target) ||
+        !convert_temperature(state->actual_temperature, state->unit, &actual)) {
+        return false;
+    }
+    state->target_temperature = target;
+    state->actual_temperature = actual;
+    state->unit = unit;
+    return true;
 }
 
 uint8_t tmy05_protocol_checksum(const uint8_t *data, size_t length)
@@ -281,8 +328,7 @@ static bool apply_control_value(const ble_sim_profile_info_t *info,
         if (value > TMY05_UNIT_FAHRENHEIT) {
             return false;
         }
-        state->unit = (tmy05_temperature_unit_t)value;
-        return true;
+        return fridge_protocol_change_unit(state, (tmy05_temperature_unit_t)value);
 
     case TMY05_COMMAND_SET_MODE:
         if (info->has_child_lock) {

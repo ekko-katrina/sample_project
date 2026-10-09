@@ -134,6 +134,8 @@ void fridge_protocol_make_initial_state(ble_sim_profile_t profile,
                                         tmy05_state_t *state);
 bool fridge_protocol_validate_state(ble_sim_profile_t profile,
                                     const tmy05_state_t *state);
+bool fridge_protocol_change_unit(tmy05_state_t *state,
+                                 tmy05_temperature_unit_t unit);
 
 uint8_t tmy05_protocol_checksum(const uint8_t *data, size_t length);
 bool tmy05_protocol_validate_frame(const uint8_t *frame, size_t length);

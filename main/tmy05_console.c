@@ -250,16 +250,22 @@ static int unit_command(int argc, char **argv)
         return 1;
     }
 
+    tmy05_temperature_unit_t requested_unit;
     if (strcmp(argv[1], "c") == 0) {
-        state.unit = TMY05_UNIT_CELSIUS;
+        requested_unit = TMY05_UNIT_CELSIUS;
     } else if (strcmp(argv[1], "f") == 0) {
-        state.unit = TMY05_UNIT_FAHRENHEIT;
+        requested_unit = TMY05_UNIT_FAHRENHEIT;
     } else if (strcmp(argv[1], "toggle") == 0) {
-        state.unit = state.unit == TMY05_UNIT_CELSIUS
-                         ? TMY05_UNIT_FAHRENHEIT
-                         : TMY05_UNIT_CELSIUS;
+        requested_unit = state.unit == TMY05_UNIT_CELSIUS
+                             ? TMY05_UNIT_FAHRENHEIT
+                             : TMY05_UNIT_CELSIUS;
     } else {
         printf("用法：unit c|f|toggle\n");
+        return 1;
+    }
+
+    if (!fridge_protocol_change_unit(&state, requested_unit)) {
+        ESP_LOGE(TAG, "温标换算结果超出可表示范围");
         return 1;
     }
 

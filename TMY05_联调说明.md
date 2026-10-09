@@ -20,7 +20,7 @@ BOOT 按键使用 GPIO0。长按约 2 秒，串口出现“请松开按键”后
 
 | 档位 | 广播名称 | 新协议 Service Data | APP 写入 | ESP32 通知 | 状态帧 |
 | --- | --- | --- | --- | --- | --- |
-| 旧版 Y05 | `Aurora Y05_XXXX` | 无 | `FFF6` | `FFF7` | 12 字节，不含电压 |
+| 旧版 Y05 | `Aurora Y05_XXXX` | 无 | `FFF7` | `FFF7` | 12 字节，不含电压 |
 | 新版 Y17 | `GLACIER Y_XXXX JUNIPER` | `54 4D 01 03` | `FFF1` | `FFF2` | 14 字节，含电压 |
 | 新版 Y16 | `GLACIER Y_XXXX` | `54 4D 01 02` | `FFF1` | `FFF2` | 14 字节，含电压 |
 | 新版 TM-310 | `GLACIER 3_XXXX` | `54 4D 01 01` | `FFF1` | `FFF2` | 14 字节，含电压 |
@@ -45,8 +45,7 @@ APP 解析 `FFF0` UUID 后获得的 Service Data 内容为协议规定的 `54 4D
 
 旧版行为保持不变：
 
-- `FFF6`：Read、Write、Write Without Response。
-- `FFF7`：Read、Write、Notify。
+- 读、写特征 UUID 均为 `FFF7`；写特征支持 Read、Write、Write Without Response，通知特征支持 Read、Write、Notify。
 
 APP 连接后先订阅当前档位的通知特征，再写入协议原始字节。ESP32 支持完整帧、拆包，以及一次写入包含多帧的粘包；帧头、长度、异或校验或帧尾错误会被丢弃并自动重新寻找下一帧头。
 

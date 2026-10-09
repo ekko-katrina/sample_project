@@ -49,12 +49,13 @@ static tmy05_state_t g_fridge_state;
 static ble_sim_profile_t g_active_profile = BLE_SIM_PROFILE_LEGACY_Y05;
 static const ble_sim_profile_info_t *g_profile_info;
 static ble_ota_start_handler_t g_ota_start_handler;
+static ble_state_change_handler_t g_state_change_handler;
 static char g_device_name[32];
 /* AD type 0x16 contains its UUID first, in little-endian byte order. */
 static uint8_t g_service_data[] = {0xF0, 0xFF, 0x54, 0x4D, 0x01, 0x04};
 
 static const ble_uuid16_t g_service_uuid = BLE_UUID16_INIT(FRIDGE_SERVICE_UUID);
-static ble_uuid16_t g_write_uuid = BLE_UUID16_INIT(0xFFF6);
+static ble_uuid16_t g_write_uuid = BLE_UUID16_INIT(0xFFF7);
 static ble_uuid16_t g_notify_uuid = BLE_UUID16_INIT(0xFFF7);
 
 static int gap_event_handler(struct ble_gap_event *event, void *arg);
@@ -123,6 +124,15 @@ static tmy05_state_t get_state_snapshot(void)
     snapshot = g_fridge_state;
     portEXIT_CRITICAL(&g_state_lock);
     return snapshot;
+}
+
+static void report_state_change(const tmy05_state_t *before,
+                                const tmy05_state_t *after)
+{
+    if (g_state_change_handler != NULL &&
+        memcmp(before, after, sizeof(*before)) != 0) {
+        g_state_change_handler(before, after);
+    }
 }
 
 static const char *fault_text(uint8_t fault_code)
@@ -452,6 +462,7 @@ static void process_complete_app_frame(phone_connection_t *connection,
                                        size_t length)
 {
     tmy05_command_t command;
+    tmy05_state_t previous;
     tmy05_state_t snapshot;
     bool accepted;
 
@@ -470,7 +481,8 @@ static void process_complete_app_frame(phone_connection_t *connection,
     }
 
     portENTER_CRITICAL(&g_state_lock);
-    snapshot = g_fridge_state;
+    previous = g_fridge_state;
+    snapshot = previous;
     accepted = fridge_protocol_apply_app_frame(g_active_profile,
                                                frame,
                                                length,
@@ -485,6 +497,8 @@ static void process_complete_app_frame(phone_connection_t *connection,
         ESP_LOGW(TAG, "当前档位不支持该命令，或命令参数无效");
         return;
     }
+
+    report_state_change(&previous, &snapshot);
 
     log_app_command(command, &snapshot);
     if (command == TMY05_COMMAND_GET_STATE) {
@@ -634,6 +648,38 @@ static struct ble_gatt_chr_def g_gatt_characteristics[] = {
     },
     {0},
 };
+
+static void configure_gatt_characteristics(void)
+{
+    if (g_profile_info->is_legacy) {
+        /*
+         * Legacy Y05 uses one bidirectional FFF7 characteristic.  Registering
+         * separate write and notify characteristics with the same UUID makes
+         * them ambiguous to phone APIs, which normally resolve a
+         * characteristic by service UUID + characteristic UUID only.
+         */
+        g_gatt_characteristics[0].uuid = &g_notify_uuid.u;
+        g_gatt_characteristics[0].flags = BLE_GATT_CHR_F_READ |
+                                           BLE_GATT_CHR_F_WRITE |
+                                           BLE_GATT_CHR_F_WRITE_NO_RSP |
+                                           BLE_GATT_CHR_F_NOTIFY;
+        g_gatt_characteristics[0].val_handle = &g_tx_value_handle;
+
+        /* A NULL UUID terminates the characteristic definition array. */
+        g_gatt_characteristics[1].uuid = NULL;
+        g_gatt_characteristics[1].flags = 0;
+        g_gatt_characteristics[1].val_handle = NULL;
+        return;
+    }
+
+    /* Unified profiles keep independent FFF1 write and FFF2 notify values. */
+    g_gatt_characteristics[0].uuid = &g_write_uuid.u;
+    g_gatt_characteristics[0].flags = BLE_GATT_CHR_F_WRITE;
+    g_gatt_characteristics[0].val_handle = &g_rx_value_handle;
+    g_gatt_characteristics[1].uuid = &g_notify_uuid.u;
+    g_gatt_characteristics[1].flags = BLE_GATT_CHR_F_NOTIFY;
+    g_gatt_characteristics[1].val_handle = &g_tx_value_handle;
+}
 
 static const struct ble_gatt_svc_def g_gatt_services[] = {
     {
@@ -846,17 +892,7 @@ void ble_init(ble_sim_profile_t profile)
 
     g_write_uuid.value = g_profile_info->write_uuid;
     g_notify_uuid.value = g_profile_info->notify_uuid;
-    if (g_profile_info->is_legacy) {
-        g_gatt_characteristics[0].flags = BLE_GATT_CHR_F_READ |
-                                           BLE_GATT_CHR_F_WRITE |
-                                           BLE_GATT_CHR_F_WRITE_NO_RSP;
-        g_gatt_characteristics[1].flags = BLE_GATT_CHR_F_READ |
-                                           BLE_GATT_CHR_F_WRITE |
-                                           BLE_GATT_CHR_F_NOTIFY;
-    } else {
-        g_gatt_characteristics[0].flags = BLE_GATT_CHR_F_WRITE;
-        g_gatt_characteristics[1].flags = BLE_GATT_CHR_F_NOTIFY;
-    }
+    configure_gatt_characteristics();
 
     ESP_LOGI(TAG, "当前模拟：%s", g_profile_info->display_name);
     if (g_profile_info->is_legacy) {
@@ -902,19 +938,27 @@ bool ble_tmy05_set_state(const tmy05_state_t *state)
         return false;
     }
 
+    tmy05_state_t previous;
     portENTER_CRITICAL(&g_state_lock);
+    previous = g_fridge_state;
     g_fridge_state = *state;
     portEXIT_CRITICAL(&g_state_lock);
     notify_all_subscribers("冰箱完整状态改变", true);
+    report_state_change(&previous, state);
     return true;
 }
 
 bool ble_tmy05_set_actual_temperature(int16_t temperature)
 {
+    tmy05_state_t previous;
+    tmy05_state_t current;
     portENTER_CRITICAL(&g_state_lock);
+    previous = g_fridge_state;
     g_fridge_state.actual_temperature = temperature;
+    current = g_fridge_state;
     portEXIT_CRITICAL(&g_state_lock);
     notify_all_subscribers("实际温度改变", true);
+    report_state_change(&previous, &current);
     return true;
 }
 
@@ -924,10 +968,15 @@ bool ble_tmy05_set_fault(uint8_t fault_code)
         return false;
     }
 
+    tmy05_state_t previous;
+    tmy05_state_t current;
     portENTER_CRITICAL(&g_state_lock);
+    previous = g_fridge_state;
     g_fridge_state.fault_code = fault_code;
+    current = g_fridge_state;
     portEXIT_CRITICAL(&g_state_lock);
     notify_all_subscribers("故障状态改变", true);
+    report_state_change(&previous, &current);
     return true;
 }
 
@@ -937,11 +986,21 @@ bool ble_fridge_set_actual_voltage(uint16_t centi_volts)
         return false;
     }
 
+    tmy05_state_t previous;
+    tmy05_state_t current;
     portENTER_CRITICAL(&g_state_lock);
+    previous = g_fridge_state;
     g_fridge_state.actual_voltage_centi_volts = centi_volts;
+    current = g_fridge_state;
     portEXIT_CRITICAL(&g_state_lock);
     notify_all_subscribers("实际电压改变", true);
+    report_state_change(&previous, &current);
     return true;
+}
+
+void ble_tmy05_set_state_change_handler(ble_state_change_handler_t handler)
+{
+    g_state_change_handler = handler;
 }
 
 void ble_phone_advertising_pause(void)

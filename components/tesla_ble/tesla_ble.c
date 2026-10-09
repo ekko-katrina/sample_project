@@ -534,7 +534,7 @@ static bool check_tesla_adv(const uint8_t *data, uint8_t len, const char *target
 /**
  * @brief 启动 BLE 扫描
  */
-static void tesla_scan(void)
+static esp_err_t tesla_scan(void)
 {
     uint8_t own_addr_type;
     struct ble_gap_disc_params disc_params = {0};
@@ -543,13 +543,15 @@ static void tesla_scan(void)
     rc = ble_hs_id_infer_auto(0, &own_addr_type);
     if (rc != 0) {
         ESP_LOGE(TAG, "Failed to infer address type: %d", rc);
-        return;
+        return ESP_ERR_INVALID_STATE;
     }
 
     disc_params.filter_duplicates = 0;  // 不过滤重复设备
     disc_params.passive = 0;             // 主动扫描
-    disc_params.itvl = 0;                // 使用默认扫描间隔
-    disc_params.window = 0;              // 使用默认扫描窗口
+    // Units are 0.625 ms: scan for 40 ms every 160 ms, leaving airtime for
+    // phone advertising/connections and Wi-Fi. Active scanning reads scan responses.
+    disc_params.itvl = 256;
+    disc_params.window = 64;
     disc_params.filter_policy = 0;       // 不使用白名单
     disc_params.limited = 0;             // 一般发现模式
 
@@ -562,10 +564,12 @@ static void tesla_scan(void)
 
     if (rc != 0) {
         ESP_LOGE(TAG, "Failed to start scan: %d", rc);
+        return ESP_FAIL;
     } else {
         ESP_LOGI(TAG, "Scanning for Tesla vehicle: %s", g_target_local_name);
         notify_state_change(TESLA_STATE_SCANNING);
     }
+    return ESP_OK;
 }
 
 static void tesla_start_deferred_connect(void)
@@ -891,8 +895,10 @@ static int tesla_gap_event(struct ble_gap_event *event, void *arg)
         } else {
             ESP_LOGE(TAG, "Connection failed: %d", event->connect.status);
             notify_state_change(TESLA_STATE_DISCONNECTED);
-            // 重试扫描
+            // The integrated Tesla Link task owns retries and their backoff.
+#ifndef TESLA_BLE_EXTERNAL_HOST
             tesla_scan();
+#endif
         }
         return 0;
 
@@ -1175,9 +1181,7 @@ esp_err_t tesla_ble_scan(const char *vin)
     ESP_LOGI(TAG, "Target local name: %s", g_target_local_name);
 
     g_target_found = false;
-    tesla_scan();
-
-    return ESP_OK;
+    return tesla_scan();
 }
 
 /**

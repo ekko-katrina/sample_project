@@ -1,4 +1,5 @@
 #include "ble_profile_switch.h"
+#include "mqtt_service.h"
 
 #include <stdbool.h>
 
@@ -98,7 +99,8 @@ static void button_task(void *arg)
                     continue;
                 }
                 ESP_LOGW(TAG, "BOOT 已松开，正在安全重启并应用 %s",
-                         ble_sim_profile_info(g_button_profile)->display_name);
+                          ble_sim_profile_info(g_button_profile)->display_name);
+                mqtt_service_prepare_restart();
                 vTaskDelay(pdMS_TO_TICKS(50));
                 esp_restart();
             }

@@ -42,7 +42,7 @@
 
 #define CONNECT_TIMEOUT_MS 30000U
 #define PAIRING_APPROVAL_MS 60000U
-#define RECONNECT_DELAY_MS 5000U
+#define RECONNECT_DELAY_MS 15000U
 
 static const char *NVS_NAMESPACE = "tesla_link";
 static const char *NVS_KEY_VIN = "vin";
@@ -59,8 +59,7 @@ static bool g_paired;
 static uint8_t g_connection_state;
 static uint8_t g_stage;
 static uint8_t g_error;
-static uint16_t g_request_id;
-static uint16_t g_request_connection;
+static uint16_t g_request_connection = UINT16_MAX;
 static uint32_t g_revision;
 
 static uint8_t frame_checksum(const uint8_t *data, size_t length)
@@ -141,14 +140,14 @@ static esp_err_t load_configuration(void)
     return ESP_OK;
 }
 
-static esp_err_t load_or_create_key(bool regenerate)
+static esp_err_t load_or_create_key(void)
 {
     uint8_t private_key[32];
     nvs_handle_t handle;
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
     if (err != ESP_OK) return err;
     size_t length = sizeof(private_key);
-    err = regenerate ? ESP_ERR_NVS_NOT_FOUND : nvs_get_blob(handle, NVS_KEY_PRIVATE, private_key, &length);
+    err = nvs_get_blob(handle, NVS_KEY_PRIVATE, private_key, &length);
     if (err == ESP_OK && length == sizeof(private_key)) {
         nvs_close(handle);
         return tesla_ble_load_key(private_key);
@@ -161,19 +160,18 @@ static esp_err_t load_or_create_key(bool regenerate)
     return err;
 }
 
-static void notify_status(uint8_t command, uint16_t request_id, uint16_t connection_handle)
+static void notify_status(uint8_t command, uint16_t connection_handle)
 {
     if (g_notify_handler == NULL) return;
-    uint8_t payload[25], frame[32];
+    uint8_t payload[23], frame[29];
     xSemaphoreTake(g_lock, portMAX_DELAY);
     size_t vin_length = g_configured ? strlen(g_vin) : 0U;
-    payload[0] = (uint8_t)(request_id >> 8U); payload[1] = (uint8_t)request_id;
-    payload[2] = g_configured ? 1U : 0U; payload[3] = g_paired ? 1U : 0U;
-    payload[4] = g_connection_state; payload[5] = g_stage; payload[6] = g_error;
-    payload[7] = (uint8_t)vin_length;
-    if (vin_length > 0U) memcpy(payload + 8U, g_vin, vin_length);
+    payload[0] = g_configured ? 1U : 0U; payload[1] = g_paired ? 1U : 0U;
+    payload[2] = g_connection_state; payload[3] = g_stage; payload[4] = g_error;
+    payload[5] = (uint8_t)vin_length;
+    if (vin_length > 0U) memcpy(payload + 6U, g_vin, vin_length);
     xSemaphoreGive(g_lock);
-    size_t length = build_frame(command, payload, 8U + vin_length, frame, sizeof(frame));
+    size_t length = build_frame(command, payload, 6U + vin_length, frame, sizeof(frame));
     if (length > 0U) g_notify_handler(connection_handle, frame, length);
 }
 
@@ -181,9 +179,9 @@ static void set_stage(uint8_t stage, uint8_t error)
 {
     xSemaphoreTake(g_lock, portMAX_DELAY);
     g_stage = stage; g_error = error;
-    uint16_t connection_handle = g_request_connection, request_id = g_request_id;
+    uint16_t connection_handle = g_request_connection;
     xSemaphoreGive(g_lock);
-    if (connection_handle != 0U) notify_status(TESLA_COMMAND_EVENT, request_id, connection_handle);
+    if (connection_handle != UINT16_MAX) notify_status(TESLA_COMMAND_EVENT, connection_handle);
 }
 
 static void state_changed(tesla_conn_state_t state, void *argument)
@@ -200,16 +198,15 @@ static esp_err_t scan_and_wait_for_service(const char *vin)
 {
     xEventGroupClearBits(g_events, EVT_CONNECTED | EVT_SERVICE_DISCOVERED | EVT_AUTHENTICATED | EVT_DISCONNECTED);
     set_stage(TESLA_STAGE_SCANNING, TESLA_ERROR_NONE);
-    ble_phone_advertising_pause();
+    /* Keep the phone peripheral discoverable while the central searches for the car. */
     esp_err_t err = tesla_ble_scan(vin);
-    if (err != ESP_OK) { ble_phone_advertising_resume(); return err; }
+    if (err != ESP_OK) return err;
     EventBits_t bits = xEventGroupWaitBits(g_events, EVT_CONNECTED | EVT_DISCONNECTED, pdFALSE, pdFALSE,
                                            pdMS_TO_TICKS(CONNECT_TIMEOUT_MS));
     if ((bits & EVT_CONNECTED) == 0U) {
-        tesla_ble_scan_stop(); ble_phone_advertising_resume(); return ESP_ERR_TIMEOUT;
+        tesla_ble_scan_stop(); return ESP_ERR_TIMEOUT;
     }
     set_stage(TESLA_STAGE_CONNECTING, TESLA_ERROR_NONE);
-    ble_phone_advertising_resume();
     bits = xEventGroupWaitBits(g_events, EVT_SERVICE_DISCOVERED | EVT_DISCONNECTED, pdFALSE, pdFALSE,
                                pdMS_TO_TICKS(CONNECT_TIMEOUT_MS));
     return (bits & EVT_SERVICE_DISCOVERED) != 0U ? ESP_OK : ESP_ERR_TIMEOUT;
@@ -275,7 +272,7 @@ esp_err_t tesla_link_start(void)
     if (g_lock == NULL || g_events == NULL) return ESP_ERR_NO_MEM;
     esp_err_t err = tesla_ble_init();
     if (err != ESP_OK) return err;
-    err = load_or_create_key(false);
+    err = load_or_create_key();
     if (err != ESP_OK) return err;
     load_configuration();
     tesla_ble_set_state_callback(state_changed, NULL);
@@ -294,41 +291,45 @@ bool tesla_link_handle_ble_frame(uint16_t connection_handle, const uint8_t *fram
     const uint8_t *payload = frame + 4U;
     size_t payload_length = length - 6U;
     if (command == TESLA_COMMAND_QUERY_STATUS) {
-        if (payload_length == 2U) {
-            uint16_t request_id = (uint16_t)(((uint16_t)payload[0] << 8U) | payload[1]);
-            notify_status(TESLA_COMMAND_STATUS, request_id, connection_handle);
+        if (payload_length == 0U) {
+            xSemaphoreTake(g_lock, portMAX_DELAY);
+            g_request_connection = connection_handle;
+            xSemaphoreGive(g_lock);
+            notify_status(TESLA_COMMAND_STATUS, connection_handle);
         }
         return true;
     }
     if (command != TESLA_COMMAND_CONFIGURE) return false;
-    uint16_t request_id = payload_length >= 2U ? (uint16_t)(((uint16_t)payload[0] << 8U) | payload[1]) : 0U;
-    if (payload_length != 21U || payload[3] != 17U) {
-        xSemaphoreTake(g_lock, portMAX_DELAY); g_error = TESLA_ERROR_INVALID_VIN; xSemaphoreGive(g_lock);
-        notify_status(TESLA_COMMAND_EVENT, request_id, connection_handle);
+    if (payload_length != 18U || payload[0] != 17U) {
+        xSemaphoreTake(g_lock, portMAX_DELAY);
+        g_stage = TESLA_STAGE_FAILED; g_error = TESLA_ERROR_INVALID_VIN;
+        xSemaphoreGive(g_lock);
+        notify_status(TESLA_COMMAND_EVENT, connection_handle);
         return true;
     }
-    char vin[18]; memcpy(vin, payload + 4U, 17U); vin[17] = '\0';
+    char vin[18]; memcpy(vin, payload + 1U, 17U); vin[17] = '\0';
     for (size_t i = 0; i < 17U; ++i) vin[i] = (char)toupper((unsigned char)vin[i]);
     if (!is_valid_vin(vin)) {
-        xSemaphoreTake(g_lock, portMAX_DELAY); g_error = TESLA_ERROR_INVALID_VIN; xSemaphoreGive(g_lock);
-        notify_status(TESLA_COMMAND_EVENT, request_id, connection_handle);
+        xSemaphoreTake(g_lock, portMAX_DELAY);
+        g_stage = TESLA_STAGE_FAILED; g_error = TESLA_ERROR_INVALID_VIN;
+        xSemaphoreGive(g_lock);
+        notify_status(TESLA_COMMAND_EVENT, connection_handle);
         return true;
     }
-    bool regenerate = (payload[2] & 0x01U) != 0U;
     xSemaphoreTake(g_lock, portMAX_DELAY);
     bool vin_changed = strcmp(g_vin, vin) != 0;
     strlcpy(g_vin, vin, sizeof(g_vin)); g_configured = true;
-    if (vin_changed || regenerate) g_paired = false;
+    if (vin_changed) g_paired = false;
     g_stage = TESLA_STAGE_SAVED; g_error = TESLA_ERROR_NONE;
-    g_request_id = request_id; g_request_connection = connection_handle; ++g_revision;
+    g_request_connection = connection_handle; ++g_revision;
     xSemaphoreGive(g_lock);
     tesla_ble_scan_stop();
     tesla_ble_disconnect();
-    if (save_configuration() != ESP_OK || (regenerate && load_or_create_key(true) != ESP_OK)) {
+    if (save_configuration() != ESP_OK) {
         set_stage(TESLA_STAGE_FAILED, TESLA_ERROR_SAVE_FAILED);
         return true;
     }
-    notify_status(TESLA_COMMAND_EVENT, request_id, connection_handle);
+    notify_status(TESLA_COMMAND_EVENT, connection_handle);
     if (g_task != NULL) xTaskNotifyGive(g_task);
     return true;
 }
@@ -336,6 +337,6 @@ bool tesla_link_handle_ble_frame(uint16_t connection_handle, const uint8_t *fram
 void tesla_link_handle_phone_disconnect(uint16_t connection_handle)
 {
     xSemaphoreTake(g_lock, portMAX_DELAY);
-    if (g_request_connection == connection_handle) g_request_connection = 0U;
+    if (g_request_connection == connection_handle) g_request_connection = UINT16_MAX;
     xSemaphoreGive(g_lock);
 }

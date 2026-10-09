@@ -29,4 +29,18 @@ menu "TMY05 firmware settings"
             WPA2 password for the TMY05-Setup-XXXX captive portal. It must have
             at least eight characters.
 
+    config TMY05_MQTT_BROKER_URI
+        string "Development MQTT broker URI"
+        default "mqtt://8.138.244.51:1883"
+        help
+            MQTT broker used by the new-protocol profiles. The current default is
+            the plaintext development broker and must not be used in production.
+
+    config TMY05_MQTT_ALLOW_TEST_SN
+        bool "Allow built-in test SN when NVS SN is absent"
+        default y
+        help
+            Development-only fallback. Production builds should disable this
+            option and provision mqtt_cfg/sn in NVS before MQTT starts.
+
 endmenu

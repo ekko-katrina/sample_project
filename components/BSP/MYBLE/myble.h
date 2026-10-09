@@ -7,6 +7,8 @@
 #include "tmy05_protocol.h"
 
 typedef bool (*ble_ota_start_handler_t)(const tmy05_ota_request_t *request);
+typedef void (*ble_state_change_handler_t)(const tmy05_state_t *before,
+                                           const tmy05_state_t *after);
 
 void start_advertising(void);
 
@@ -27,6 +29,8 @@ bool ble_tmy05_set_actual_temperature(int16_t temperature);
 bool ble_tmy05_set_fault(uint8_t fault_code);
 
 bool ble_fridge_set_actual_voltage(uint16_t centi_volts);
+
+void ble_tmy05_set_state_change_handler(ble_state_change_handler_t handler);
 
 void ble_phone_advertising_pause(void);
 void ble_phone_advertising_resume(void);
