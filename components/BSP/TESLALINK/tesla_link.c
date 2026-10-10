@@ -1,6 +1,5 @@
 #include "tesla_link.h"
 
-#include <ctype.h>
 #include <string.h>
 
 #include "esp_log.h"
@@ -32,8 +31,12 @@
 #define TESLA_ERROR_INVALID_VIN 0x02U
 #define TESLA_ERROR_SAVE_FAILED 0x03U
 #define TESLA_ERROR_SCAN_TIMEOUT 0x04U
+#define TESLA_ERROR_CONNECTION 0x05U
 #define TESLA_ERROR_PAIRING_FAILED 0x06U
 #define TESLA_ERROR_AUTH_FAILED 0x07U
+#define TESLA_ERROR_KEY_REJECTED 0x09U
+#define TESLA_ERROR_DATA_UNAVAILABLE 0x0AU
+#define TESLA_LINK_ERR_CONNECTION ((esp_err_t)0x7503)
 #define TESLA_LINK_ERR_SAVE_FAILED ((esp_err_t)0x7502)
 
 #define EVT_CONNECTED BIT0
@@ -66,6 +69,11 @@ static uint8_t g_stage;
 static uint8_t g_error;
 static uint16_t g_request_connection = UINT16_MAX;
 static uint32_t g_revision;
+static uint32_t g_active_revision;
+static bool g_pending_config;
+static char g_pending_vin[18];
+static bool g_monitoring;
+static unsigned g_query_failures;
 
 static uint8_t frame_checksum(const uint8_t *data, size_t length)
 {
@@ -99,7 +107,8 @@ static bool is_valid_vin(const char *vin)
     if (vin == NULL || strlen(vin) != 17U) return false;
     for (size_t i = 0; i < 17U; ++i) {
         unsigned char value = (unsigned char)vin[i];
-        if (!isalnum(value) || value == 'I' || value == 'O' || value == 'Q') return false;
+        if (!((value >= 'A' && value <= 'Z') || (value >= '0' && value <= '9')) ||
+            value == 'I' || value == 'O' || value == 'Q') return false;
     }
     return true;
 }
@@ -130,7 +139,8 @@ static esp_err_t save_paired(bool paired, uint32_t revision)
         if (err == ESP_OK) err = nvs_commit(handle);
         nvs_close(handle);
     }
-    if (err == ESP_OK) g_paired = paired;
+    /* A storage failure cannot make a explicitly rejected key authorized. */
+    if (err == ESP_OK || !paired) g_paired = paired;
     xSemaphoreGive(g_lock);
     return err;
 }
@@ -192,7 +202,16 @@ static void notify_status(uint8_t command, uint16_t connection_handle)
 static void set_stage(uint8_t stage, uint8_t error)
 {
     xSemaphoreTake(g_lock, portMAX_DELAY);
+    if (g_pending_config || g_active_revision != g_revision) {
+        xSemaphoreGive(g_lock);
+        return;
+    }
     g_stage = stage; g_error = error;
+    if (stage == TESLA_STAGE_AUTHENTICATED && error == TESLA_ERROR_NONE && !g_monitoring) {
+        g_monitoring = true;
+        g_drive_log_updated = xTaskGetTickCount();
+        g_query_failures = 0;
+    }
     uint16_t connection_handle = g_request_connection;
     xSemaphoreGive(g_lock);
     if (connection_handle != UINT16_MAX) notify_status(TESLA_COMMAND_EVENT, connection_handle);
@@ -203,8 +222,19 @@ static void state_changed(tesla_conn_state_t state, void *argument)
     (void)argument;
     xSemaphoreTake(g_lock, portMAX_DELAY);
     g_connection_state = (uint8_t)state;
-    if (state == TESLA_STATE_DISCONNECTED || state == TESLA_STATE_CONNECTED) g_drive_log_valid = false;
+    if (state == TESLA_STATE_DISCONNECTED || state == TESLA_STATE_CONNECTED) {
+        g_drive_log_valid = false;
+        g_monitoring = false;
+    }
+    if (state == TESLA_STATE_DISCONNECTED && !g_pending_config &&
+        (g_error == TESLA_ERROR_NONE || g_error == TESLA_ERROR_DATA_UNAVAILABLE)) {
+        g_stage = TESLA_STAGE_FAILED;
+        g_error = TESLA_ERROR_CONNECTION;
+    }
+    uint16_t phone = g_request_connection;
+    bool publish = !g_pending_config;
     xSemaphoreGive(g_lock);
+    if (publish && phone != UINT16_MAX) notify_status(TESLA_COMMAND_EVENT, phone);
     if (state == TESLA_STATE_CONNECTED) xEventGroupSetBits(g_events, EVT_CONNECTED);
     else if (state == TESLA_STATE_SERVICE_DISCOVERED) xEventGroupSetBits(g_events, EVT_SERVICE_DISCOVERED);
     else if (state == TESLA_STATE_AUTHENTICATED) xEventGroupSetBits(g_events, EVT_AUTHENTICATED);
@@ -227,15 +257,32 @@ static void drive_log_task(void *argument)
 {
     (void)argument;
     TickType_t wake = xTaskGetTickCount();
+    TickType_t last_status = wake;
     while (true) {
-        xTaskDelayUntil(&wake, pdMS_TO_TICKS(5000));
+        xTaskDelayUntil(&wake, pdMS_TO_TICKS(1000));
+        bool heartbeat = (wake - last_status) >= pdMS_TO_TICKS(5000);
+        if (heartbeat) last_status = wake;
         xSemaphoreTake(g_lock, portMAX_DELAY);
         bool connected = g_connection_state == TESLA_STATE_AUTHENTICATED;
+        bool expired = g_monitoring && !g_pending_config &&
+            (xTaskGetTickCount() - g_drive_log_updated) >= pdMS_TO_TICKS(15000);
+        bool report_expired = expired && g_error != TESLA_ERROR_DATA_UNAVAILABLE;
+        if (expired) {
+            g_drive_log_valid = false;
+            g_monitoring = false;
+            g_stage = TESLA_STAGE_FAILED;
+            g_error = TESLA_ERROR_DATA_UNAVAILABLE;
+            tesla_ble_invalidate_data();
+            /* Interrupt a blocked query before a new C2 can reset the worker. */
+            tesla_ble_cancel_operations();
+        }
+        uint16_t phone = g_request_connection;
         bool valid = g_drive_log_valid;
         tesla_drive_state_t drive = g_drive_log_state;
         TickType_t updated = g_drive_log_updated;
         xSemaphoreGive(g_lock);
-        if (!connected) continue;
+        if ((heartbeat || report_expired) && phone != UINT16_MAX) notify_status(TESLA_COMMAND_EVENT, phone);
+        if (!connected || !heartbeat) continue;
         if (valid) {
             uint32_t age_sec = (uint32_t)((xTaskGetTickCount() - updated) / pdMS_TO_TICKS(1000));
             ESP_LOGI(TAG, "车速=%.1f km/h，档位=%s，数据更新于 %lu 秒前",
@@ -246,6 +293,27 @@ static void drive_log_task(void *argument)
     }
 }
 
+static bool operation_current(uint32_t revision)
+{
+    xSemaphoreTake(g_lock, portMAX_DELAY);
+    bool current = revision == g_revision && !g_pending_config;
+    xSemaphoreGive(g_lock);
+    return current;
+}
+
+static esp_err_t wait_for_link(EventBits_t desired, uint32_t timeout_ms)
+{
+    TickType_t started = xTaskGetTickCount();
+    while ((xTaskGetTickCount() - started) < pdMS_TO_TICKS(timeout_ms)) {
+        if (!operation_current(g_active_revision)) return ESP_ERR_INVALID_STATE;
+        EventBits_t bits = xEventGroupWaitBits(g_events, desired | EVT_DISCONNECTED,
+                                             pdFALSE, pdFALSE, pdMS_TO_TICKS(100));
+        if (bits & EVT_DISCONNECTED) return TESLA_LINK_ERR_CONNECTION;
+        if (bits & desired) return ESP_OK;
+    }
+    return ESP_ERR_TIMEOUT;
+}
+
 static esp_err_t scan_and_wait_for_service(const char *vin)
 {
     xEventGroupClearBits(g_events, EVT_CONNECTED | EVT_SERVICE_DISCOVERED | EVT_AUTHENTICATED | EVT_DISCONNECTED);
@@ -253,36 +321,64 @@ static esp_err_t scan_and_wait_for_service(const char *vin)
     /* Keep the phone peripheral discoverable while the central searches for the car. */
     esp_err_t err = tesla_ble_scan(vin);
     if (err != ESP_OK) return err;
-    EventBits_t bits = xEventGroupWaitBits(g_events, EVT_CONNECTED | EVT_DISCONNECTED, pdFALSE, pdFALSE,
-                                           pdMS_TO_TICKS(CONNECT_TIMEOUT_MS));
-    if ((bits & EVT_CONNECTED) == 0U) {
-        tesla_ble_scan_stop(); return ESP_ERR_TIMEOUT;
+    err = wait_for_link(EVT_CONNECTED, CONNECT_TIMEOUT_MS);
+    if (err != ESP_OK) {
+        bool connecting = tesla_ble_get_state() == TESLA_STATE_CONNECTING;
+        tesla_ble_scan_stop();
+        return err == ESP_ERR_TIMEOUT && connecting ? TESLA_LINK_ERR_CONNECTION : err;
     }
     set_stage(TESLA_STAGE_CONNECTING, TESLA_ERROR_NONE);
-    bits = xEventGroupWaitBits(g_events, EVT_SERVICE_DISCOVERED | EVT_DISCONNECTED, pdFALSE, pdFALSE,
-                               pdMS_TO_TICKS(CONNECT_TIMEOUT_MS));
-    return (bits & EVT_SERVICE_DISCOVERED) != 0U ? ESP_OK : ESP_ERR_TIMEOUT;
+    return wait_for_link(EVT_SERVICE_DISCOVERED, CONNECT_TIMEOUT_MS);
 }
 
 static esp_err_t monitor_vehicle(void)
 {
     while (tesla_ble_get_state() == TESLA_STATE_AUTHENTICATED) {
-        tesla_ble_get_body_state();
-        if (tesla_ble_get_drive_state() == ESP_OK) {
-            tesla_vehicle_state_t state;
-            if (tesla_ble_get_vehicle_state(&state) == ESP_OK) {
+        if (!operation_current(g_active_revision)) return ESP_ERR_INVALID_STATE;
+        esp_err_t result = tesla_ble_get_drive_state();
+        if (!operation_current(g_active_revision)) return ESP_ERR_INVALID_STATE;
+        if (tesla_ble_get_state() == TESLA_STATE_DISCONNECTED) return TESLA_LINK_ERR_CONNECTION;
+        if (result == TESLA_ERR_KEY_NOT_ON_WHITELIST) return result;
+        tesla_vehicle_state_t state;
+        if (result == ESP_OK && tesla_ble_get_vehicle_state(&state) != ESP_OK) result = ESP_FAIL;
+        if (result == ESP_OK) {
+            xSemaphoreTake(g_lock, portMAX_DELAY);
+            if (g_connection_state == TESLA_STATE_AUTHENTICATED && !g_pending_config) {
+                g_drive_log_state = state.drive;
+                g_drive_log_updated = xTaskGetTickCount();
+                g_drive_log_valid = true;
+                g_query_failures = 0;
+            }
+            xSemaphoreGive(g_lock);
+            set_stage(TESLA_STAGE_AUTHENTICATED, TESLA_ERROR_NONE);
+            if (operation_current(g_active_revision)) tesla_ble_get_body_state();
+        } else {
+            xSemaphoreTake(g_lock, portMAX_DELAY);
+            bool recover = ++g_query_failures >= 3 || g_error == TESLA_ERROR_DATA_UNAVAILABLE ||
+                (xTaskGetTickCount() - g_drive_log_updated) >= pdMS_TO_TICKS(15000);
+            xSemaphoreGive(g_lock);
+            if (recover) {
                 xSemaphoreTake(g_lock, portMAX_DELAY);
-                if (g_connection_state == TESLA_STATE_AUTHENTICATED) {
-                    g_drive_log_state = state.drive;
-                    g_drive_log_updated = xTaskGetTickCount();
-                    g_drive_log_valid = true;
-                }
+                g_drive_log_valid = false;
+                g_monitoring = false;
                 xSemaphoreGive(g_lock);
+                set_stage(TESLA_STAGE_FAILED, TESLA_ERROR_DATA_UNAVAILABLE);
+                tesla_ble_reset_session();
+                if (!operation_current(g_active_revision)) return ESP_ERR_INVALID_STATE;
+                result = tesla_ble_start_session(TESLA_DOMAIN_VEHICLE_SECURITY);
+                if (result != ESP_OK) return result == ESP_ERR_TIMEOUT ? ESP_FAIL : result;
+                /* Data recovery is published only after a fresh drive response. */
+                xSemaphoreTake(g_lock, portMAX_DELAY);
+                g_monitoring = true;
+                g_drive_log_updated = xTaskGetTickCount();
+                g_query_failures = 0;
+                xSemaphoreGive(g_lock);
+                continue;
             }
         }
-        if ((xEventGroupWaitBits(g_events, EVT_DISCONNECTED, pdTRUE, pdFALSE, pdMS_TO_TICKS(5000)) & EVT_DISCONNECTED) != 0U) break;
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(2000));
     }
-    return ESP_OK;
+    return TESLA_LINK_ERR_CONNECTION;
 }
 
 static esp_err_t pair_vehicle(const char *vin, uint32_t revision)
@@ -306,6 +402,7 @@ static esp_err_t pair_vehicle(const char *vin, uint32_t revision)
         }
         /* Probe approval now; a successful session is the confirmation. */
         err = tesla_ble_start_session(TESLA_DOMAIN_VEHICLE_SECURITY);
+        if (!operation_current(revision)) return ESP_ERR_INVALID_STATE;
         if (err == ESP_OK) {
             err = save_paired(true, revision);
             if (err != ESP_OK) {
@@ -331,7 +428,7 @@ static esp_err_t pair_vehicle(const char *vin, uint32_t revision)
     }
     tesla_ble_disconnect();
     ESP_LOGW(TAG, "Pairing approval window expired; keeping paired=false");
-    return err == ESP_ERR_TIMEOUT ? ESP_FAIL : err;
+    return ESP_FAIL;
 }
 
 static esp_err_t connect_vehicle(const char *vin)
@@ -339,8 +436,8 @@ static esp_err_t connect_vehicle(const char *vin)
     esp_err_t err = scan_and_wait_for_service(vin);
     if (err != ESP_OK) return err;
     err = tesla_ble_start_session(TESLA_DOMAIN_VEHICLE_SECURITY);
+    if (!operation_current(g_active_revision)) return ESP_ERR_INVALID_STATE;
     if (err != ESP_OK) {
-        tesla_ble_disconnect();
         /* Session timeouts are authentication errors, not scan failures. */
         return err == ESP_ERR_TIMEOUT ? ESP_FAIL : err;
     }
@@ -352,39 +449,90 @@ static void tesla_task(void *argument)
 {
     (void)argument;
     while (true) {
+        /* All configuration and vehicle results share this single worker.
+         * C2 only cancels/enqueues; stage=01 is emitted after old work unwinds. */
+        tesla_ble_scan_stop();
+        tesla_ble_disconnect();
+        TickType_t closing = xTaskGetTickCount();
+        while (!tesla_ble_is_quiescent() &&
+               (xTaskGetTickCount() - closing) < pdMS_TO_TICKS(3000)) vTaskDelay(pdMS_TO_TICKS(20));
+        if (!tesla_ble_is_quiescent()) {
+            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
+            continue;
+        }
+        tesla_ble_reset_session();
         char vin[18];
         xSemaphoreTake(g_lock, portMAX_DELAY);
+        g_active_revision = g_revision;
+        g_monitoring = false;
+        g_drive_log_valid = false;
+        if (g_pending_config) {
+            char previous_vin[18]; strlcpy(previous_vin, g_vin, sizeof(previous_vin));
+            bool previous_configured = g_configured, previous_paired = g_paired;
+            if (strcmp(g_vin, g_pending_vin) != 0) g_paired = false;
+            strlcpy(g_vin, g_pending_vin, sizeof(g_vin));
+            g_configured = true;
+            esp_err_t saved = save_configuration();
+            g_pending_config = false;
+            if (saved != ESP_OK) {
+                strlcpy(g_vin, previous_vin, sizeof(g_vin));
+                g_configured = previous_configured; g_paired = previous_paired;
+                xSemaphoreGive(g_lock);
+                set_stage(TESLA_STAGE_FAILED, TESLA_ERROR_SAVE_FAILED);
+                ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+                continue;
+            }
+            xSemaphoreGive(g_lock);
+            set_stage(TESLA_STAGE_SAVED, TESLA_ERROR_NONE);
+            xSemaphoreTake(g_lock, portMAX_DELAY);
+        }
         bool configured = g_configured, paired = g_paired;
         uint32_t revision = g_revision;
         strlcpy(vin, g_vin, sizeof(vin));
         xSemaphoreGive(g_lock);
         if (!configured) { ulTaskNotifyTake(pdTRUE, portMAX_DELAY); continue; }
         esp_err_t err = paired ? connect_vehicle(vin) : pair_vehicle(vin, revision);
-        if (paired && err == TESLA_ERR_KEY_NOT_ON_WHITELIST) {
-            set_stage(TESLA_STAGE_FAILED, TESLA_ERROR_AUTH_FAILED);
+        while (err == TESLA_ERR_KEY_NOT_ON_WHITELIST && operation_current(revision)) {
             ESP_LOGW(TAG, "Vehicle rejected saved key; clearing paired flag and requesting approval again");
             esp_err_t saved = save_paired(false, revision);
             if (saved == ESP_OK) {
+                tesla_ble_reset_session();
+                set_stage(TESLA_STAGE_FAILED, TESLA_ERROR_KEY_REJECTED);
                 paired = false;
+                tesla_ble_disconnect();
                 /* Wait for the previous connection to close before resetting scan events. */
-                EventBits_t bits = xEventGroupWaitBits(g_events, EVT_DISCONNECTED, pdFALSE, pdFALSE,
-                                                       pdMS_TO_TICKS(3000));
-                if ((bits & EVT_DISCONNECTED) != 0U ||
-                    tesla_ble_get_state() == TESLA_STATE_DISCONNECTED) {
+                TickType_t closing_key = xTaskGetTickCount();
+                while (!tesla_ble_is_quiescent() && operation_current(revision) &&
+                       (xTaskGetTickCount() - closing_key) < pdMS_TO_TICKS(3000)) vTaskDelay(pdMS_TO_TICKS(20));
+                if (tesla_ble_is_quiescent() && operation_current(revision)) {
+                    tesla_ble_reset_session();
                     err = pair_vehicle(vin, revision);
+                } else {
+                    err = TESLA_LINK_ERR_CONNECTION;
                 }
             } else {
+                if (saved != ESP_ERR_INVALID_STATE) {
+                    tesla_ble_reset_session();
+                    set_stage(TESLA_STAGE_FAILED, TESLA_ERROR_KEY_REJECTED);
+                }
                 err = saved == ESP_ERR_INVALID_STATE ? saved : TESLA_LINK_ERR_SAVE_FAILED;
             }
         }
-        xSemaphoreTake(g_lock, portMAX_DELAY); bool superseded = revision != g_revision; xSemaphoreGive(g_lock);
+        xSemaphoreTake(g_lock, portMAX_DELAY);
+        bool superseded = revision != g_revision;
+        paired = g_paired;
+        xSemaphoreGive(g_lock);
         if (!superseded && err != ESP_OK) {
+            tesla_ble_reset_session();
             uint8_t error = err == TESLA_LINK_ERR_SAVE_FAILED ? TESLA_ERROR_SAVE_FAILED
+                : err == TESLA_LINK_ERR_CONNECTION ? TESLA_ERROR_CONNECTION
                 : err == ESP_ERR_TIMEOUT ? TESLA_ERROR_SCAN_TIMEOUT
                 : err == TESLA_ERR_KEY_NOT_ON_WHITELIST || paired ? TESLA_ERROR_AUTH_FAILED
                 : TESLA_ERROR_PAIRING_FAILED;
             set_stage(TESLA_STAGE_FAILED, error);
         }
+        tesla_ble_disconnect();
+        if (superseded) continue;
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(RECONNECT_DELAY_MS));
     }
 }
@@ -435,7 +583,6 @@ bool tesla_link_handle_ble_frame(uint16_t connection_handle, const uint8_t *fram
         return true;
     }
     char vin[18]; memcpy(vin, payload + 1U, 17U); vin[17] = '\0';
-    for (size_t i = 0; i < 17U; ++i) vin[i] = (char)toupper((unsigned char)vin[i]);
     if (!is_valid_vin(vin)) {
         xSemaphoreTake(g_lock, portMAX_DELAY);
         g_stage = TESLA_STAGE_FAILED; g_error = TESLA_ERROR_INVALID_VIN;
@@ -444,19 +591,14 @@ bool tesla_link_handle_ble_frame(uint16_t connection_handle, const uint8_t *fram
         return true;
     }
     xSemaphoreTake(g_lock, portMAX_DELAY);
-    bool vin_changed = strcmp(g_vin, vin) != 0;
-    strlcpy(g_vin, vin, sizeof(g_vin)); g_configured = true;
-    if (vin_changed) g_paired = false;
-    g_stage = TESLA_STAGE_SAVED; g_error = TESLA_ERROR_NONE;
+    strlcpy(g_pending_vin, vin, sizeof(g_pending_vin));
+    g_pending_config = true;
+    g_monitoring = false;
+    g_drive_log_valid = false;
     g_request_connection = connection_handle; ++g_revision;
     xSemaphoreGive(g_lock);
     tesla_ble_scan_stop();
     tesla_ble_disconnect();
-    if (save_configuration() != ESP_OK) {
-        set_stage(TESLA_STAGE_FAILED, TESLA_ERROR_SAVE_FAILED);
-        return true;
-    }
-    notify_status(TESLA_COMMAND_EVENT, connection_handle);
     if (g_task != NULL) xTaskNotifyGive(g_task);
     return true;
 }

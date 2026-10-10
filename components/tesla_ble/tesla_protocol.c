@@ -645,10 +645,14 @@ bool tesla_parse_and_decrypt_response(
     UniversalMessage__RoutableMessage *rmsg = universal_message__routable_message__unpack(NULL, len, data);
     if (!rmsg) return false;
 
-    uint32_t from_domain = TESLA_DOMAIN_INFOTAINMENT;
+    uint32_t from_domain = 0;
     if (rmsg->from_destination && rmsg->from_destination->sub_destination_case ==
         UNIVERSAL_MESSAGE__DESTINATION__SUB_DESTINATION_DOMAIN) {
         from_domain = rmsg->from_destination->domain;
+    }
+    if (from_domain != TESLA_DOMAIN_INFOTAINMENT) {
+        universal_message__routable_message__free_unpacked(rmsg, NULL);
+        return false;
     }
 
     if (rmsg->payload_case != UNIVERSAL_MESSAGE__ROUTABLE_MESSAGE__PAYLOAD_PROTOBUF_MESSAGE_AS_BYTES ||
@@ -657,11 +661,15 @@ bool tesla_parse_and_decrypt_response(
             *fault = (tesla_fault_t)rmsg->signedmessagestatus->signed_message_fault;
         }
         universal_message__routable_message__free_unpacked(rmsg, NULL);
-        return *fault != TESLA_FAULT_NONE;
+        return false;
     }
 
     if (rmsg->signedmessagestatus) {
         *fault = (tesla_fault_t)rmsg->signedmessagestatus->signed_message_fault;
+    }
+    if (*fault != TESLA_FAULT_NONE) {
+        universal_message__routable_message__free_unpacked(rmsg, NULL);
+        return false;
     }
 
     uint32_t counter = 0;
@@ -695,7 +703,7 @@ bool tesla_parse_and_decrypt_response(
 
     if (!have_gcm) {
         ESP_LOGW(TAG, "Missing nonce or tag for decryption");
-        return *fault != TESLA_FAULT_NONE;
+        return false;
     }
 
     uint8_t metadata[128];
@@ -745,6 +753,11 @@ bool tesla_parse_drive_state(
     }
 
     CarServer__DriveState *ds = resp->vehicledata->drive_state;
+    if (!ds->shift_state || ds->shift_state->type_case == CAR_SERVER__SHIFT_STATE__TYPE__NOT_SET ||
+        ds->shift_state->type_case == CAR_SERVER__SHIFT_STATE__TYPE_INVALID) {
+        car_server__response__free_unpacked(resp, &s_default_allocator);
+        return false;
+    }
 
     /* 档位：ShiftState oneof 映射到 tesla_gear_state_t */
     switch (ds->shift_state ? ds->shift_state->type_case : CAR_SERVER__SHIFT_STATE__TYPE__NOT_SET) {

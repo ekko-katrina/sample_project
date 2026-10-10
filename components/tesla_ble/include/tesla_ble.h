@@ -378,6 +378,13 @@ esp_err_t tesla_ble_connect(void);
  */
 void tesla_ble_disconnect(void);
 
+/* Cancel in-flight queries immediately. Reset is called by the single vehicle
+ * worker after cancellation has unwound; it preserves VIN and long-term keys. */
+void tesla_ble_cancel_operations(void);
+bool tesla_ble_is_quiescent(void);
+void tesla_ble_reset_session(void);
+void tesla_ble_invalidate_data(void);
+
 /**
  * @brief 启动会话与车辆 (密钥交换)
  * @param domain 目标域 (VCSEC 或 Infotainment)
