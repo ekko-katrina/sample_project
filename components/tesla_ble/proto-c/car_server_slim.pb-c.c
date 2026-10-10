@@ -142,6 +142,141 @@ void   car_server__drive_state__free_unpacked
   assert(message->base.descriptor == &car_server__drive_state__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
+void   car_server__timestamp__init
+                     (CarServer__Timestamp         *message)
+{
+  static const CarServer__Timestamp init_value = CAR_SERVER__TIMESTAMP__INIT;
+  *message = init_value;
+}
+size_t car_server__timestamp__get_packed_size
+                     (const CarServer__Timestamp *message)
+{
+  assert(message->base.descriptor == &car_server__timestamp__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t car_server__timestamp__pack
+                     (const CarServer__Timestamp *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &car_server__timestamp__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t car_server__timestamp__pack_to_buffer
+                     (const CarServer__Timestamp *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &car_server__timestamp__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+CarServer__Timestamp *
+       car_server__timestamp__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (CarServer__Timestamp *)
+     protobuf_c_message_unpack (&car_server__timestamp__descriptor,
+                                allocator, len, data);
+}
+void   car_server__timestamp__free_unpacked
+                     (CarServer__Timestamp *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &car_server__timestamp__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   car_server__result_reason__init
+                     (CarServer__ResultReason         *message)
+{
+  static const CarServer__ResultReason init_value = CAR_SERVER__RESULT_REASON__INIT;
+  *message = init_value;
+}
+size_t car_server__result_reason__get_packed_size
+                     (const CarServer__ResultReason *message)
+{
+  assert(message->base.descriptor == &car_server__result_reason__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t car_server__result_reason__pack
+                     (const CarServer__ResultReason *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &car_server__result_reason__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t car_server__result_reason__pack_to_buffer
+                     (const CarServer__ResultReason *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &car_server__result_reason__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+CarServer__ResultReason *
+       car_server__result_reason__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (CarServer__ResultReason *)
+     protobuf_c_message_unpack (&car_server__result_reason__descriptor,
+                                allocator, len, data);
+}
+void   car_server__result_reason__free_unpacked
+                     (CarServer__ResultReason *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &car_server__result_reason__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   car_server__action_status__init
+                     (CarServer__ActionStatus         *message)
+{
+  static const CarServer__ActionStatus init_value = CAR_SERVER__ACTION_STATUS__INIT;
+  *message = init_value;
+}
+size_t car_server__action_status__get_packed_size
+                     (const CarServer__ActionStatus *message)
+{
+  assert(message->base.descriptor == &car_server__action_status__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t car_server__action_status__pack
+                     (const CarServer__ActionStatus *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &car_server__action_status__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t car_server__action_status__pack_to_buffer
+                     (const CarServer__ActionStatus *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &car_server__action_status__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+CarServer__ActionStatus *
+       car_server__action_status__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (CarServer__ActionStatus *)
+     protobuf_c_message_unpack (&car_server__action_status__descriptor,
+                                allocator, len, data);
+}
+void   car_server__action_status__free_unpacked
+                     (CarServer__ActionStatus *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &car_server__action_status__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
 void   car_server__vehicle_data__init
                      (CarServer__VehicleData         *message)
 {
@@ -533,7 +668,7 @@ const ProtobufCMessageDescriptor car_server__shift_state__descriptor =
   (ProtobufCMessageInit) car_server__shift_state__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor car_server__drive_state__field_descriptors[5] =
+static const ProtobufCFieldDescriptor car_server__drive_state__field_descriptors[6] =
 {
   {
     "shift_state",
@@ -548,15 +683,27 @@ static const ProtobufCFieldDescriptor car_server__drive_state__field_descriptors
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
+    "timestamp",
+    4,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    0,   /* quantifier_offset */
+    offsetof(CarServer__DriveState, timestamp),
+    &car_server__timestamp__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
     "speed",
     102,
     PROTOBUF_C_LABEL_NONE,
     PROTOBUF_C_TYPE_UINT32,
-    0,   /* quantifier_offset */
+    offsetof(CarServer__DriveState, optional_speed_case),
     offsetof(CarServer__DriveState, speed),
     NULL,
     NULL,
-    0,             /* flags */
+    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
@@ -564,11 +711,11 @@ static const ProtobufCFieldDescriptor car_server__drive_state__field_descriptors
     103,
     PROTOBUF_C_LABEL_NONE,
     PROTOBUF_C_TYPE_INT32,
-    0,   /* quantifier_offset */
+    offsetof(CarServer__DriveState, optional_power_case),
     offsetof(CarServer__DriveState, power),
     NULL,
     NULL,
-    0,             /* flags */
+    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
@@ -576,11 +723,11 @@ static const ProtobufCFieldDescriptor car_server__drive_state__field_descriptors
     105,
     PROTOBUF_C_LABEL_NONE,
     PROTOBUF_C_TYPE_INT32,
-    0,   /* quantifier_offset */
+    offsetof(CarServer__DriveState, optional_odometer_case),
     offsetof(CarServer__DriveState, odometer_in_hundredths_of_a_mile),
     NULL,
     NULL,
-    0,             /* flags */
+    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
@@ -588,27 +735,29 @@ static const ProtobufCFieldDescriptor car_server__drive_state__field_descriptors
     106,
     PROTOBUF_C_LABEL_NONE,
     PROTOBUF_C_TYPE_FLOAT,
-    0,   /* quantifier_offset */
+    offsetof(CarServer__DriveState, optional_speed_float_case),
     offsetof(CarServer__DriveState, speed_float),
     NULL,
     NULL,
-    0,             /* flags */
+    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
 };
 static const unsigned car_server__drive_state__field_indices_by_name[] = {
-  3,   /* field[3] = odometer_in_hundredths_of_a_mile */
-  2,   /* field[2] = power */
+  4,   /* field[4] = odometer_in_hundredths_of_a_mile */
+  3,   /* field[3] = power */
   0,   /* field[0] = shift_state */
-  1,   /* field[1] = speed */
-  4,   /* field[4] = speed_float */
+  2,   /* field[2] = speed */
+  5,   /* field[5] = speed_float */
+  1,   /* field[1] = timestamp */
 };
-static const ProtobufCIntRange car_server__drive_state__number_ranges[3 + 1] =
+static const ProtobufCIntRange car_server__drive_state__number_ranges[4 + 1] =
 {
   { 1, 0 },
-  { 102, 1 },
-  { 105, 3 },
-  { 0, 5 }
+  { 4, 1 },
+  { 102, 2 },
+  { 105, 4 },
+  { 0, 6 }
 };
 const ProtobufCMessageDescriptor car_server__drive_state__descriptor =
 {
@@ -618,11 +767,151 @@ const ProtobufCMessageDescriptor car_server__drive_state__descriptor =
   "CarServer__DriveState",
   "CarServer",
   sizeof(CarServer__DriveState),
-  5,
+  6,
   car_server__drive_state__field_descriptors,
   car_server__drive_state__field_indices_by_name,
-  3,  car_server__drive_state__number_ranges,
+  4,  car_server__drive_state__number_ranges,
   (ProtobufCMessageInit) car_server__drive_state__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor car_server__timestamp__field_descriptors[2] =
+{
+  {
+    "seconds",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT64,
+    0,   /* quantifier_offset */
+    offsetof(CarServer__Timestamp, seconds),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "nanos",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT32,
+    0,   /* quantifier_offset */
+    offsetof(CarServer__Timestamp, nanos),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned car_server__timestamp__field_indices_by_name[] = {
+  1,   /* field[1] = nanos */
+  0,   /* field[0] = seconds */
+};
+static const ProtobufCIntRange car_server__timestamp__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 2 }
+};
+const ProtobufCMessageDescriptor car_server__timestamp__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "CarServer.Timestamp",
+  "Timestamp",
+  "CarServer__Timestamp",
+  "CarServer",
+  sizeof(CarServer__Timestamp),
+  2,
+  car_server__timestamp__field_descriptors,
+  car_server__timestamp__field_indices_by_name,
+  1,  car_server__timestamp__number_ranges,
+  (ProtobufCMessageInit) car_server__timestamp__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor car_server__result_reason__field_descriptors[1] =
+{
+  {
+    "plain_text",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    offsetof(CarServer__ResultReason, reason_case),
+    offsetof(CarServer__ResultReason, plain_text),
+    NULL,
+    &protobuf_c_empty_string,
+    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned car_server__result_reason__field_indices_by_name[] = {
+  0,   /* field[0] = plain_text */
+};
+static const ProtobufCIntRange car_server__result_reason__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 1 }
+};
+const ProtobufCMessageDescriptor car_server__result_reason__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "CarServer.ResultReason",
+  "ResultReason",
+  "CarServer__ResultReason",
+  "CarServer",
+  sizeof(CarServer__ResultReason),
+  1,
+  car_server__result_reason__field_descriptors,
+  car_server__result_reason__field_indices_by_name,
+  1,  car_server__result_reason__number_ranges,
+  (ProtobufCMessageInit) car_server__result_reason__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor car_server__action_status__field_descriptors[2] =
+{
+  {
+    "result",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(CarServer__ActionStatus, result),
+    &car_server__operation_status__e__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "result_reason",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    0,   /* quantifier_offset */
+    offsetof(CarServer__ActionStatus, result_reason),
+    &car_server__result_reason__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned car_server__action_status__field_indices_by_name[] = {
+  0,   /* field[0] = result */
+  1,   /* field[1] = result_reason */
+};
+static const ProtobufCIntRange car_server__action_status__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 2 }
+};
+const ProtobufCMessageDescriptor car_server__action_status__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "CarServer.ActionStatus",
+  "ActionStatus",
+  "CarServer__ActionStatus",
+  "CarServer",
+  sizeof(CarServer__ActionStatus),
+  2,
+  car_server__action_status__field_descriptors,
+  car_server__action_status__field_indices_by_name,
+  1,  car_server__action_status__number_ranges,
+  (ProtobufCMessageInit) car_server__action_status__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
 static const ProtobufCFieldDescriptor car_server__vehicle_data__field_descriptors[1] =
@@ -663,8 +952,20 @@ const ProtobufCMessageDescriptor car_server__vehicle_data__descriptor =
   (ProtobufCMessageInit) car_server__vehicle_data__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor car_server__response__field_descriptors[1] =
+static const ProtobufCFieldDescriptor car_server__response__field_descriptors[2] =
 {
+  {
+    "actionStatus",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    0,   /* quantifier_offset */
+    offsetof(CarServer__Response, actionstatus),
+    &car_server__action_status__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
   {
     "vehicleData",
     2,
@@ -679,12 +980,13 @@ static const ProtobufCFieldDescriptor car_server__response__field_descriptors[1]
   },
 };
 static const unsigned car_server__response__field_indices_by_name[] = {
-  0,   /* field[0] = vehicleData */
+  0,   /* field[0] = actionStatus */
+  1,   /* field[1] = vehicleData */
 };
 static const ProtobufCIntRange car_server__response__number_ranges[1 + 1] =
 {
-  { 2, 0 },
-  { 0, 1 }
+  { 1, 0 },
+  { 0, 2 }
 };
 const ProtobufCMessageDescriptor car_server__response__descriptor =
 {
@@ -694,7 +996,7 @@ const ProtobufCMessageDescriptor car_server__response__descriptor =
   "CarServer__Response",
   "CarServer",
   sizeof(CarServer__Response),
-  1,
+  2,
   car_server__response__field_descriptors,
   car_server__response__field_indices_by_name,
   1,  car_server__response__number_ranges,
@@ -832,4 +1134,32 @@ const ProtobufCMessageDescriptor car_server__action__descriptor =
   1,  car_server__action__number_ranges,
   (ProtobufCMessageInit) car_server__action__init,
   NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCEnumValue car_server__operation_status__e__enum_values_by_number[2] =
+{
+  { "OPERATIONSTATUS_OK", "CAR_SERVER__OPERATION_STATUS__E__OPERATIONSTATUS_OK", 0 },
+  { "OPERATIONSTATUS_ERROR", "CAR_SERVER__OPERATION_STATUS__E__OPERATIONSTATUS_ERROR", 1 },
+};
+static const ProtobufCIntRange car_server__operation_status__e__value_ranges[] = {
+{0, 0},{0, 2}
+};
+static const ProtobufCEnumValueIndex car_server__operation_status__e__enum_values_by_name[2] =
+{
+  { "OPERATIONSTATUS_ERROR", 1 },
+  { "OPERATIONSTATUS_OK", 0 },
+};
+const ProtobufCEnumDescriptor car_server__operation_status__e__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "CarServer.OperationStatus_E",
+  "OperationStatus_E",
+  "CarServer__OperationStatusE",
+  "CarServer",
+  2,
+  car_server__operation_status__e__enum_values_by_number,
+  2,
+  car_server__operation_status__e__enum_values_by_name,
+  1,
+  car_server__operation_status__e__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
 };

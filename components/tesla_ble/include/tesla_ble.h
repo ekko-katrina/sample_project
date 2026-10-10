@@ -146,6 +146,12 @@ typedef struct {
     float speed_kmh; // 速度
     int32_t power_kw; // 功率
     float odometer_km; // 里程
+    bool speed_present;
+    bool power_present;
+    bool odometer_present;
+    bool timestamp_present;
+    int64_t timestamp_seconds;
+    int32_t timestamp_nanos;
     char destination[64]; // 目的地
     float minutes_to_arrival; // 到达时间
     float km_to_arrival; // 到达距离
@@ -392,6 +398,8 @@ void tesla_ble_invalidate_data(void);
  */
 /* Vehicle explicitly rejected the current device key during session setup. */
 #define TESLA_ERR_KEY_NOT_ON_WHITELIST ((esp_err_t)0x7501)
+/* Control may have executed, but its terminal reply was not received. Do not resend automatically. */
+#define TESLA_ERR_COMMAND_UNCONFIRMED ((esp_err_t)0x7502)
 esp_err_t tesla_ble_start_session(tesla_domain_t domain);
 
 /**

@@ -22,31 +22,30 @@ typedef struct VCSEC__ToVCSECMessage VCSEC__ToVCSECMessage;
 typedef struct VCSEC__KeyIdentifier VCSEC__KeyIdentifier;
 typedef struct VCSEC__KeyMetadata VCSEC__KeyMetadata;
 typedef struct VCSEC__PublicKey VCSEC__PublicKey;
+typedef struct VCSEC__WhitelistInfo VCSEC__WhitelistInfo;
+typedef struct VCSEC__WhitelistEntryInfo VCSEC__WhitelistEntryInfo;
 typedef struct VCSEC__InformationRequest VCSEC__InformationRequest;
+typedef struct VCSEC__ClosureMoveRequest VCSEC__ClosureMoveRequest;
 typedef struct VCSEC__PermissionChange VCSEC__PermissionChange;
+typedef struct VCSEC__ReplaceKey VCSEC__ReplaceKey;
 typedef struct VCSEC__WhitelistOperation VCSEC__WhitelistOperation;
-typedef struct VCSEC__UnsignedMessage VCSEC__UnsignedMessage;
-typedef struct VCSEC__ClosureStatuses VCSEC__ClosureStatuses;
-typedef struct VCSEC__VehicleStatus VCSEC__VehicleStatus;
 typedef struct VCSEC__WhitelistOperationStatus VCSEC__WhitelistOperationStatus;
 typedef struct VCSEC__SignedMessageStatus VCSEC__SignedMessageStatus;
 typedef struct VCSEC__CommandStatus VCSEC__CommandStatus;
+typedef struct VCSEC__UnsignedMessage VCSEC__UnsignedMessage;
+typedef struct VCSEC__ClosureStatuses VCSEC__ClosureStatuses;
+typedef struct VCSEC__DetailedClosureStatus VCSEC__DetailedClosureStatus;
+typedef struct VCSEC__VehicleStatus VCSEC__VehicleStatus;
 typedef struct VCSEC__FromVCSECMessage VCSEC__FromVCSECMessage;
 
 
 /* --- enums --- */
 
-/*
- * VCSEC 侧签名类型（与 Signatures 包区分）。PRESENT_KEY：密钥在场认证（如 BLE 配对、添加密钥时）
- */
 typedef enum _VCSEC__SignatureType {
   VCSEC__SIGNATURE_TYPE__SIGNATURE_TYPE_NONE = 0,
   VCSEC__SIGNATURE_TYPE__SIGNATURE_TYPE_PRESENT_KEY = 2
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__SIGNATURE_TYPE)
 } VCSEC__SignatureType;
-/*
- * 密钥形态：添加密钥时描述设备类型（NFC 卡、手机、云钥匙等）
- */
 typedef enum _VCSEC__KeyFormFactor {
   VCSEC__KEY_FORM_FACTOR__KEY_FORM_FACTOR_UNKNOWN = 0,
   VCSEC__KEY_FORM_FACTOR__KEY_FORM_FACTOR_NFC_CARD = 1,
@@ -55,21 +54,12 @@ typedef enum _VCSEC__KeyFormFactor {
   VCSEC__KEY_FORM_FACTOR__KEY_FORM_FACTOR_CLOUD_KEY = 9
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__KEY_FORM_FACTOR)
 } VCSEC__KeyFormFactor;
-/*
- * 信息请求类型：查询车辆状态或白名单
- */
 typedef enum _VCSEC__InformationRequestType {
-  /*
-   * 车辆状态（门锁、睡眠、闭合件等）
-   */
   VCSEC__INFORMATION_REQUEST_TYPE__INFORMATION_REQUEST_TYPE_GET_STATUS = 0,
   VCSEC__INFORMATION_REQUEST_TYPE__INFORMATION_REQUEST_TYPE_GET_WHITELIST_INFO = 5,
   VCSEC__INFORMATION_REQUEST_TYPE__INFORMATION_REQUEST_TYPE_GET_WHITELIST_ENTRY_INFO = 6
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__INFORMATION_REQUEST_TYPE)
 } VCSEC__InformationRequestType;
-/*
- * 远程无钥匙动作（RKE）：解锁、锁车、远程驾驶、自动上锁、唤醒等
- */
 typedef enum _VCSEC__RKEActionE {
   VCSEC__RKEACTION__E__RKE_ACTION_UNLOCK = 0,
   VCSEC__RKEACTION__E__RKE_ACTION_LOCK = 1,
@@ -78,9 +68,75 @@ typedef enum _VCSEC__RKEActionE {
   VCSEC__RKEACTION__E__RKE_ACTION_WAKE_VEHICLE = 30
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__RKEACTION__E)
 } VCSEC__RKEActionE;
-/*
- * 门/盖/充电口等闭合状态（Go SDK ClosureState_E）
- */
+typedef enum _VCSEC__ClosureMoveTypeE {
+  VCSEC__CLOSURE_MOVE_TYPE__E__CLOSURE_MOVE_TYPE_NONE = 0,
+  VCSEC__CLOSURE_MOVE_TYPE__E__CLOSURE_MOVE_TYPE_MOVE = 1,
+  VCSEC__CLOSURE_MOVE_TYPE__E__CLOSURE_MOVE_TYPE_STOP = 2,
+  VCSEC__CLOSURE_MOVE_TYPE__E__CLOSURE_MOVE_TYPE_OPEN = 3,
+  VCSEC__CLOSURE_MOVE_TYPE__E__CLOSURE_MOVE_TYPE_CLOSE = 4
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__CLOSURE_MOVE_TYPE__E)
+} VCSEC__ClosureMoveTypeE;
+typedef enum _VCSEC__OperationStatusE {
+  VCSEC__OPERATION_STATUS__E__OPERATIONSTATUS_OK = 0,
+  VCSEC__OPERATION_STATUS__E__OPERATIONSTATUS_WAIT = 1,
+  VCSEC__OPERATION_STATUS__E__OPERATIONSTATUS_ERROR = 2
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__OPERATION_STATUS__E)
+} VCSEC__OperationStatusE;
+typedef enum _VCSEC__SignedMessageInformationE {
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_NONE = 0,
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_UNKNOWN = 1,
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_NOT_ON_WHITELIST = 2,
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_IV_SMALLER_THAN_EXPECTED = 3,
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_INVALID_TOKEN = 4,
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_TOKEN_AND_COUNTER_INVALID = 5,
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_AES_DECRYPT_AUTH = 6,
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_ECDSA_INPUT = 7,
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_ECDSA_SIGNATURE = 8,
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_LOCAL_ENTITY_START = 9,
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_LOCAL_ENTITY_RESULT = 10,
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_COULD_NOT_RETRIEVE_KEY = 11,
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_COULD_NOT_RETRIEVE_TOKEN = 12,
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_SIGNATURE_TOO_SHORT = 13,
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_TOKEN_IS_INCORRECT_LENGTH = 14,
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_INCORRECT_EPOCH = 15,
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_IV_INCORRECT_LENGTH = 16,
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_TIME_EXPIRED = 17,
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_NOT_PROVISIONED_WITH_IDENTITY = 18,
+  VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_COULD_NOT_HASH_METADATA = 19
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__SIGNED_MESSAGE_INFORMATION__E)
+} VCSEC__SignedMessageInformationE;
+typedef enum _VCSEC__WhitelistOperationInformationE {
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_NONE = 0,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_UNDOCUMENTED_ERROR = 1,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_NO_PERMISSION_TO_REMOVE_ONESELF = 2,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_KEYFOB_SLOTS_FULL = 3,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_WHITELIST_FULL = 4,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_NO_PERMISSION_TO_ADD = 5,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_INVALID_PUBLIC_KEY = 6,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_NO_PERMISSION_TO_REMOVE = 7,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_NO_PERMISSION_TO_CHANGE_PERMISSIONS = 8,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_ELEVATE_OTHER_ABOVE_ONESELF = 9,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_DEMOTE_SUPERIOR_TO_ONESELF = 10,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_REMOVE_OWN_PERMISSIONS = 11,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_PUBLIC_KEY_NOT_ON_WHITELIST = 12,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_ADD_KEY_THAT_IS_ALREADY_ON_THE_WHITELIST = 13,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_NOT_ALLOWED_TO_ADD_UNLESS_ON_READER = 14,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_FM_MODIFYING_OUTSIDE_OF_F_MODE = 15,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_FM_ATTEMPTING_TO_ADD_PERMANENT_KEY = 16,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_FM_ATTEMPTING_TO_REMOVE_PERMANENT_KEY = 17,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_KEYCHAIN_WHILE_FS_FULL = 18,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_ADD_KEY_WITHOUT_ROLE = 19,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_ADD_KEY_WITH_SERVICE_ROLE = 20,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_NON_SERVICE_KEY_ATTEMPTING_TO_ADD_SERVICE_TECH = 21,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_SERVICE_KEY_ATTEMPTING_TO_ADD_SERVICE_TECH_OUTSIDE_SERVICE_MODE = 22,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_COULD_NOT_START_LOCAL_ENTITY_AUTH = 23,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_UI_DENIED = 24,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_TIMED_OUT_WAITING_FOR_TAP = 25,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_TIMED_OUT_WAITING_FOR_UI_ACK = 26,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_VALET_MODE = 27,
+  VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_CANCELLED = 28
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__WHITELIST_OPERATION_INFORMATION__E)
+} VCSEC__WhitelistOperationInformationE;
 typedef enum _VCSEC__ClosureStateE {
   VCSEC__CLOSURE_STATE__E__CLOSURESTATE_CLOSED = 0,
   VCSEC__CLOSURE_STATE__E__CLOSURESTATE_OPEN = 1,
@@ -91,9 +147,6 @@ typedef enum _VCSEC__ClosureStateE {
   VCSEC__CLOSURE_STATE__E__CLOSURESTATE_CLOSING = 6
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__CLOSURE_STATE__E)
 } VCSEC__ClosureStateE;
-/*
- * 车辆锁状态
- */
 typedef enum _VCSEC__VehicleLockStateE {
   VCSEC__VEHICLE_LOCK_STATE__E__VEHICLELOCKSTATE_UNLOCKED = 0,
   VCSEC__VEHICLE_LOCK_STATE__E__VEHICLELOCKSTATE_LOCKED = 1,
@@ -101,45 +154,24 @@ typedef enum _VCSEC__VehicleLockStateE {
   VCSEC__VEHICLE_LOCK_STATE__E__VEHICLELOCKSTATE_SELECTIVE_UNLOCKED = 3
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__VEHICLE_LOCK_STATE__E)
 } VCSEC__VehicleLockStateE;
-/*
- * 车辆睡眠状态：未知/唤醒/休眠
- */
 typedef enum _VCSEC__VehicleSleepStatusE {
   VCSEC__VEHICLE_SLEEP_STATUS__E__VEHICLE_SLEEP_STATUS_UNKNOWN = 0,
   VCSEC__VEHICLE_SLEEP_STATUS__E__VEHICLE_SLEEP_STATUS_AWAKE = 1,
   VCSEC__VEHICLE_SLEEP_STATUS__E__VEHICLE_SLEEP_STATUS_ASLEEP = 2
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__VEHICLE_SLEEP_STATUS__E)
 } VCSEC__VehicleSleepStatusE;
-/*
- * 用户在场：如手机钥匙在车内
- */
 typedef enum _VCSEC__UserPresenceE {
   VCSEC__USER_PRESENCE__E__VEHICLE_USER_PRESENCE_UNKNOWN = 0,
   VCSEC__USER_PRESENCE__E__VEHICLE_USER_PRESENCE_NOT_PRESENT = 1,
   VCSEC__USER_PRESENCE__E__VEHICLE_USER_PRESENCE_PRESENT = 2
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__USER_PRESENCE__E)
 } VCSEC__UserPresenceE;
-/*
- * 操作结果（Go SDK OperationStatus_E）：OK / WAIT / ERROR，用于 CommandStatus.operationStatus 等
- */
-typedef enum _VCSEC__OperationStatusE {
-  VCSEC__OPERATION_STATUS__E__OPERATIONSTATUS_OK = 0,
-  VCSEC__OPERATION_STATUS__E__OPERATIONSTATUS_WAIT = 1,
-  VCSEC__OPERATION_STATUS__E__OPERATIONSTATUS_ERROR = 2
-    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__OPERATION_STATUS__E)
-} VCSEC__OperationStatusE;
 
 /* --- messages --- */
 
-/*
- * 带签名的消息：内层为 UnsignedMessage 的序列化字节；用于需要“在场”认证的命令（如添加密钥），无需 ECDH 会话加密
- */
 struct  VCSEC__SignedMessage
 {
   ProtobufCMessage base;
-  /*
-   * 序列化后的 UnsignedMessage
-   */
   ProtobufCBinaryData protobufmessageasbytes;
   VCSEC__SignatureType signaturetype;
 };
@@ -148,9 +180,6 @@ struct  VCSEC__SignedMessage
 , {0,NULL}, VCSEC__SIGNATURE_TYPE__SIGNATURE_TYPE_NONE }
 
 
-/*
- * 发往 VCSEC 的顶层消息（当使用 PRESENT_KEY 认证时）
- */
 struct  VCSEC__ToVCSECMessage
 {
   ProtobufCMessage base;
@@ -161,9 +190,6 @@ struct  VCSEC__ToVCSECMessage
 , NULL }
 
 
-/*
- * 密钥标识：公钥的 SHA1，用于白名单条目、WhitelistOperation_status.signerOfOperation 等
- */
 struct  VCSEC__KeyIdentifier
 {
   ProtobufCMessage base;
@@ -174,9 +200,6 @@ struct  VCSEC__KeyIdentifier
 , {0,NULL} }
 
 
-/*
- * 密钥元数据，如 keyFormFactor（WhitelistOperation.metadataForKey）
- */
 struct  VCSEC__KeyMetadata
 {
   ProtobufCMessage base;
@@ -187,9 +210,6 @@ struct  VCSEC__KeyMetadata
 , VCSEC__KEY_FORM_FACTOR__KEY_FORM_FACTOR_UNKNOWN }
 
 
-/*
- * 原始公钥：65 字节未压缩点（0x04 || x || y）
- */
 struct  VCSEC__PublicKey
 {
   ProtobufCMessage base;
@@ -200,6 +220,33 @@ struct  VCSEC__PublicKey
 , {0,NULL} }
 
 
+struct  VCSEC__WhitelistInfo
+{
+  ProtobufCMessage base;
+  uint32_t numberofentries;
+  size_t n_whitelistentries;
+  VCSEC__KeyIdentifier **whitelistentries;
+  uint32_t slotmask;
+};
+#define VCSEC__WHITELIST_INFO__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&vcsec__whitelist_info__descriptor) \
+, 0, 0,NULL, 0 }
+
+
+struct  VCSEC__WhitelistEntryInfo
+{
+  ProtobufCMessage base;
+  VCSEC__KeyIdentifier *keyid;
+  VCSEC__PublicKey *publickey;
+  VCSEC__KeyMetadata *metadataforkey;
+  uint32_t slot;
+  Keys__Role keyrole;
+};
+#define VCSEC__WHITELIST_ENTRY_INFO__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&vcsec__whitelist_entry_info__descriptor) \
+, NULL, NULL, NULL, 0, KEYS__ROLE__ROLE_NONE }
+
+
 typedef enum {
   VCSEC__INFORMATION_REQUEST__KEY__NOT_SET = 0,
   VCSEC__INFORMATION_REQUEST__KEY_KEY_ID = 2,
@@ -208,9 +255,6 @@ typedef enum {
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__INFORMATION_REQUEST__KEY__CASE)
 } VCSEC__InformationRequest__KeyCase;
 
-/*
- * 信息请求：GET_STATUS / GET_WHITELIST_INFO 等，可带 keyId / publicKey / slot
- */
 struct  VCSEC__InformationRequest
 {
   ProtobufCMessage base;
@@ -227,9 +271,23 @@ struct  VCSEC__InformationRequest
 , VCSEC__INFORMATION_REQUEST_TYPE__INFORMATION_REQUEST_TYPE_GET_STATUS, VCSEC__INFORMATION_REQUEST__KEY__NOT_SET, { {0} } }
 
 
-/*
- * 权限变更：携带公钥与角色（如 addKeyToWhitelistAndAddPermissions 时设为 ROLE_OWNER）
- */
+struct  VCSEC__ClosureMoveRequest
+{
+  ProtobufCMessage base;
+  VCSEC__ClosureMoveTypeE frontdriverdoor;
+  VCSEC__ClosureMoveTypeE frontpassengerdoor;
+  VCSEC__ClosureMoveTypeE reardriverdoor;
+  VCSEC__ClosureMoveTypeE rearpassengerdoor;
+  VCSEC__ClosureMoveTypeE reartrunk;
+  VCSEC__ClosureMoveTypeE fronttrunk;
+  VCSEC__ClosureMoveTypeE chargeport;
+  VCSEC__ClosureMoveTypeE tonneau;
+};
+#define VCSEC__CLOSURE_MOVE_REQUEST__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&vcsec__closure_move_request__descriptor) \
+, VCSEC__CLOSURE_MOVE_TYPE__E__CLOSURE_MOVE_TYPE_NONE, VCSEC__CLOSURE_MOVE_TYPE__E__CLOSURE_MOVE_TYPE_NONE, VCSEC__CLOSURE_MOVE_TYPE__E__CLOSURE_MOVE_TYPE_NONE, VCSEC__CLOSURE_MOVE_TYPE__E__CLOSURE_MOVE_TYPE_NONE, VCSEC__CLOSURE_MOVE_TYPE__E__CLOSURE_MOVE_TYPE_NONE, VCSEC__CLOSURE_MOVE_TYPE__E__CLOSURE_MOVE_TYPE_NONE, VCSEC__CLOSURE_MOVE_TYPE__E__CLOSURE_MOVE_TYPE_NONE, VCSEC__CLOSURE_MOVE_TYPE__E__CLOSURE_MOVE_TYPE_NONE }
+
+
 struct  VCSEC__PermissionChange
 {
   ProtobufCMessage base;
@@ -243,6 +301,30 @@ struct  VCSEC__PermissionChange
 
 
 typedef enum {
+  VCSEC__REPLACE_KEY__KEY_TO_REPLACE__NOT_SET = 0,
+  VCSEC__REPLACE_KEY__KEY_TO_REPLACE_PUBLIC_KEY_TO_REPLACE = 1,
+  VCSEC__REPLACE_KEY__KEY_TO_REPLACE_SLOT_TO_REPLACE = 2
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__REPLACE_KEY__KEY_TO_REPLACE__CASE)
+} VCSEC__ReplaceKey__KeyToReplaceCase;
+
+struct  VCSEC__ReplaceKey
+{
+  ProtobufCMessage base;
+  VCSEC__PublicKey *keytoadd;
+  Keys__Role keyrole;
+  protobuf_c_boolean impermanent;
+  VCSEC__ReplaceKey__KeyToReplaceCase key_to_replace_case;
+  union {
+    VCSEC__PublicKey *publickeytoreplace;
+    uint32_t slottoreplace;
+  };
+};
+#define VCSEC__REPLACE_KEY__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&vcsec__replace_key__descriptor) \
+, NULL, KEYS__ROLE__ROLE_NONE, 0, VCSEC__REPLACE_KEY__KEY_TO_REPLACE__NOT_SET, {0} }
+
+
+typedef enum {
   VCSEC__WHITELIST_OPERATION__SUB_MESSAGE__NOT_SET = 0,
   VCSEC__WHITELIST_OPERATION__SUB_MESSAGE_ADD_PUBLIC_KEY_TO_WHITELIST = 1,
   VCSEC__WHITELIST_OPERATION__SUB_MESSAGE_REMOVE_PUBLIC_KEY_FROM_WHITELIST = 2,
@@ -252,19 +334,14 @@ typedef enum {
   VCSEC__WHITELIST_OPERATION__SUB_MESSAGE_UPDATE_KEY_AND_PERMISSIONS = 7,
   VCSEC__WHITELIST_OPERATION__SUB_MESSAGE_ADD_IMPERMANENT_KEY = 8,
   VCSEC__WHITELIST_OPERATION__SUB_MESSAGE_ADD_IMPERMANENT_KEY_AND_REMOVE_EXISTING = 9,
-  VCSEC__WHITELIST_OPERATION__SUB_MESSAGE_REMOVE_ALL_IMPERMANENT_KEYS = 16
+  VCSEC__WHITELIST_OPERATION__SUB_MESSAGE_REMOVE_ALL_IMPERMANENT_KEYS = 16,
+  VCSEC__WHITELIST_OPERATION__SUB_MESSAGE_REPLACE_KEY = 17
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__WHITELIST_OPERATION__SUB_MESSAGE__CASE)
 } VCSEC__WhitelistOperation__SubMessageCase;
 
-/*
- * 白名单操作：添加/删除密钥、修改权限等；addKeyToWhitelistAndAddPermissions 为常用添加并赋权
- */
 struct  VCSEC__WhitelistOperation
 {
   ProtobufCMessage base;
-  /*
-   * 可选，如 keyFormFactor
-   */
   VCSEC__KeyMetadata *metadataforkey;
   VCSEC__WhitelistOperation__SubMessageCase sub_message_case;
   union {
@@ -275,6 +352,7 @@ struct  VCSEC__WhitelistOperation
     VCSEC__PublicKey *addpublickeytowhitelist;
     VCSEC__PermissionChange *removepermissionsfrompublickey;
     VCSEC__PublicKey *removepublickeyfromwhitelist;
+    VCSEC__ReplaceKey *replacekey;
     VCSEC__PermissionChange *updatekeyandpermissions;
     protobuf_c_boolean removeallimpermanentkeys;
   };
@@ -284,17 +362,60 @@ struct  VCSEC__WhitelistOperation
 , NULL, VCSEC__WHITELIST_OPERATION__SUB_MESSAGE__NOT_SET, {0} }
 
 
+struct  VCSEC__WhitelistOperationStatus
+{
+  ProtobufCMessage base;
+  VCSEC__WhitelistOperationInformationE whitelistoperationinformation;
+  VCSEC__KeyIdentifier *signerofoperation;
+  VCSEC__OperationStatusE operationstatus;
+};
+#define VCSEC__WHITELIST_OPERATION_STATUS__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&vcsec__whitelist_operation_status__descriptor) \
+, VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_NONE, NULL, VCSEC__OPERATION_STATUS__E__OPERATIONSTATUS_OK }
+
+
+struct  VCSEC__SignedMessageStatus
+{
+  ProtobufCMessage base;
+  uint32_t counter;
+  VCSEC__SignedMessageInformationE signedmessageinformation;
+};
+#define VCSEC__SIGNED_MESSAGE_STATUS__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&vcsec__signed_message_status__descriptor) \
+, 0, VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_NONE }
+
+
+typedef enum {
+  VCSEC__COMMAND_STATUS__SUB_MESSAGE__NOT_SET = 0,
+  VCSEC__COMMAND_STATUS__SUB_MESSAGE_SIGNED_MESSAGE_STATUS = 2,
+  VCSEC__COMMAND_STATUS__SUB_MESSAGE_WHITELIST_OPERATION_STATUS = 3
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__COMMAND_STATUS__SUB_MESSAGE__CASE)
+} VCSEC__CommandStatus__SubMessageCase;
+
+struct  VCSEC__CommandStatus
+{
+  ProtobufCMessage base;
+  VCSEC__OperationStatusE operationstatus;
+  VCSEC__CommandStatus__SubMessageCase sub_message_case;
+  union {
+    VCSEC__SignedMessageStatus *signedmessagestatus;
+    VCSEC__WhitelistOperationStatus *whitelistoperationstatus;
+  };
+};
+#define VCSEC__COMMAND_STATUS__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&vcsec__command_status__descriptor) \
+, VCSEC__OPERATION_STATUS__E__OPERATIONSTATUS_OK, VCSEC__COMMAND_STATUS__SUB_MESSAGE__NOT_SET, {0} }
+
+
 typedef enum {
   VCSEC__UNSIGNED_MESSAGE__SUB_MESSAGE__NOT_SET = 0,
   VCSEC__UNSIGNED_MESSAGE__SUB_MESSAGE_INFORMATION_REQUEST = 1,
   VCSEC__UNSIGNED_MESSAGE__SUB_MESSAGE_RKEACTION = 2,
+  VCSEC__UNSIGNED_MESSAGE__SUB_MESSAGE_CLOSURE_MOVE_REQUEST = 4,
   VCSEC__UNSIGNED_MESSAGE__SUB_MESSAGE_WHITELIST_OPERATION = 16
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__UNSIGNED_MESSAGE__SUB_MESSAGE__CASE)
 } VCSEC__UnsignedMessage__SubMessageCase;
 
-/*
- * 未签名负载：实际命令内容，经 RoutableMessage 加密或明文携带。InformationRequest/RKEAction 可走未认证通道；WhitelistOperation 需 SignedMessage + PRESENT_KEY
- */
 struct  VCSEC__UnsignedMessage
 {
   ProtobufCMessage base;
@@ -302,6 +423,7 @@ struct  VCSEC__UnsignedMessage
   union {
     VCSEC__InformationRequest *informationrequest;
     VCSEC__WhitelistOperation *whitelistoperation;
+    VCSEC__ClosureMoveRequest *closuremoverequest;
     VCSEC__RKEActionE rkeaction;
   };
 };
@@ -310,9 +432,6 @@ struct  VCSEC__UnsignedMessage
 , VCSEC__UNSIGNED_MESSAGE__SUB_MESSAGE__NOT_SET, {0} }
 
 
-/*
- * 各闭合件状态：门、前后备箱、充电口、卷帘等（VehicleStatus.closureStatuses）
- */
 struct  VCSEC__ClosureStatuses
 {
   ProtobufCMessage base;
@@ -330,9 +449,16 @@ struct  VCSEC__ClosureStatuses
 , VCSEC__CLOSURE_STATE__E__CLOSURESTATE_CLOSED, VCSEC__CLOSURE_STATE__E__CLOSURESTATE_CLOSED, VCSEC__CLOSURE_STATE__E__CLOSURESTATE_CLOSED, VCSEC__CLOSURE_STATE__E__CLOSURESTATE_CLOSED, VCSEC__CLOSURE_STATE__E__CLOSURESTATE_CLOSED, VCSEC__CLOSURE_STATE__E__CLOSURESTATE_CLOSED, VCSEC__CLOSURE_STATE__E__CLOSURESTATE_CLOSED, VCSEC__CLOSURE_STATE__E__CLOSURESTATE_CLOSED }
 
 
-/*
- * 车辆状态：由 InformationRequest(GET_STATUS) 的响应经 FromVCSECMessage.vehicleStatus 返回
- */
+struct  VCSEC__DetailedClosureStatus
+{
+  ProtobufCMessage base;
+  uint32_t tonneaupercentopen;
+};
+#define VCSEC__DETAILED_CLOSURE_STATUS__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&vcsec__detailed_closure_status__descriptor) \
+, 0 }
+
+
 struct  VCSEC__VehicleStatus
 {
   ProtobufCMessage base;
@@ -340,97 +466,33 @@ struct  VCSEC__VehicleStatus
   VCSEC__VehicleLockStateE vehiclelockstate;
   VCSEC__VehicleSleepStatusE vehiclesleepstatus;
   VCSEC__UserPresenceE userpresence;
+  VCSEC__DetailedClosureStatus *detailedclosurestatus;
 };
 #define VCSEC__VEHICLE_STATUS__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&vcsec__vehicle_status__descriptor) \
-, NULL, VCSEC__VEHICLE_LOCK_STATE__E__VEHICLELOCKSTATE_UNLOCKED, VCSEC__VEHICLE_SLEEP_STATUS__E__VEHICLE_SLEEP_STATUS_UNKNOWN, VCSEC__USER_PRESENCE__E__VEHICLE_USER_PRESENCE_UNKNOWN }
-
-
-/*
- * 白名单操作状态（Go SDK WhitelistOperation_status）。精简：1/2/3 用 uint32；完整版含 WhitelistOperation_information_E、KeyIdentifier、OperationStatus_E
- */
-struct  VCSEC__WhitelistOperationStatus
-{
-  ProtobufCMessage base;
-  /*
-   * 对应 WhitelistOperation_information_E（如 WHITELIST_FULL、NO_PERMISSION_TO_ADD）
-   */
-  uint32_t whitelistoperationinformation;
-  /*
-   * 执行该操作的密钥标识
-   */
-  uint32_t signerofoperation;
-  uint32_t operationforkeyinwhitelist;
-};
-#define VCSEC__WHITELIST_OPERATION_STATUS__INIT \
- { PROTOBUF_C_MESSAGE_INIT (&vcsec__whitelist_operation_status__descriptor) \
-, 0, 0, 0 }
-
-
-/*
- * 签名消息状态（Go SDK SignedMessage_status）。counter 为防重放计数；signedMessageFault 对应 SignedMessage_information_E（如 FAULT_INVALID_TOKEN）
- */
-struct  VCSEC__SignedMessageStatus
-{
-  ProtobufCMessage base;
-  uint32_t counter;
-  uint32_t signedmessagefault;
-};
-#define VCSEC__SIGNED_MESSAGE_STATUS__INIT \
- { PROTOBUF_C_MESSAGE_INIT (&vcsec__signed_message_status__descriptor) \
-, 0, 0 }
-
-
-typedef enum {
-  VCSEC__COMMAND_STATUS__SUB_MESSAGE__NOT_SET = 0,
-  VCSEC__COMMAND_STATUS__SUB_MESSAGE_WHITELIST_OPERATION_STATUS = 5,
-  VCSEC__COMMAND_STATUS__SUB_MESSAGE_SIGNED_MESSAGE_STATUS = 6
-    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__COMMAND_STATUS__SUB_MESSAGE__CASE)
-} VCSEC__CommandStatus__SubMessageCase;
-
-/*
- * 命令状态：FromVCSECMessage.commandStatus = 4，携带 RKE/Whitelist 等命令的执行结果。本精简版 oneof 使用字段 5/6（与部分固件 wire 一致）
- */
-struct  VCSEC__CommandStatus
-{
-  ProtobufCMessage base;
-  VCSEC__OperationStatusE operationstatus;
-  VCSEC__CommandStatus__SubMessageCase sub_message_case;
-  union {
-    VCSEC__SignedMessageStatus *signedmessagestatus;
-    VCSEC__WhitelistOperationStatus *whitelistoperationstatus;
-  };
-};
-#define VCSEC__COMMAND_STATUS__INIT \
- { PROTOBUF_C_MESSAGE_INIT (&vcsec__command_status__descriptor) \
-, VCSEC__OPERATION_STATUS__E__OPERATIONSTATUS_OK, VCSEC__COMMAND_STATUS__SUB_MESSAGE__NOT_SET, {0} }
+, NULL, VCSEC__VEHICLE_LOCK_STATE__E__VEHICLELOCKSTATE_UNLOCKED, VCSEC__VEHICLE_SLEEP_STATUS__E__VEHICLE_SLEEP_STATUS_UNKNOWN, VCSEC__USER_PRESENCE__E__VEHICLE_USER_PRESENCE_UNKNOWN, NULL }
 
 
 typedef enum {
   VCSEC__FROM_VCSECMESSAGE__SUB_MESSAGE__NOT_SET = 0,
   VCSEC__FROM_VCSECMESSAGE__SUB_MESSAGE_VEHICLE_STATUS = 1,
   VCSEC__FROM_VCSECMESSAGE__SUB_MESSAGE_COMMAND_STATUS = 4,
+  VCSEC__FROM_VCSECMESSAGE__SUB_MESSAGE_WHITELIST_INFO = 16,
+  VCSEC__FROM_VCSECMESSAGE__SUB_MESSAGE_WHITELIST_ENTRY_INFO = 17,
   VCSEC__FROM_VCSECMESSAGE__SUB_MESSAGE_NOMINAL_ERROR = 46
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(VCSEC__FROM_VCSECMESSAGE__SUB_MESSAGE__CASE)
 } VCSEC__FromVCSECMessage__SubMessageCase;
 
-/*
- * VCSEC 返回的顶层消息：vehicleStatus（GET_STATUS 响应）、commandStatus（命令结果）、nominalError（应用层错误）等
- */
 struct  VCSEC__FromVCSECMessage
 {
   ProtobufCMessage base;
   VCSEC__FromVCSECMessage__SubMessageCase sub_message_case;
   union {
-    /*
-     * 命令结果（解锁/加钥等）
-     */
     VCSEC__CommandStatus *commandstatus;
     Errors__NominalError *nominalerror;
-    /*
-     * GET_STATUS 的响应
-     */
     VCSEC__VehicleStatus *vehiclestatus;
+    VCSEC__WhitelistEntryInfo *whitelistentryinfo;
+    VCSEC__WhitelistInfo *whitelistinfo;
   };
 };
 #define VCSEC__FROM_VCSECMESSAGE__INIT \
@@ -533,6 +595,44 @@ VCSEC__PublicKey *
 void   vcsec__public_key__free_unpacked
                      (VCSEC__PublicKey *message,
                       ProtobufCAllocator *allocator);
+/* VCSEC__WhitelistInfo methods */
+void   vcsec__whitelist_info__init
+                     (VCSEC__WhitelistInfo         *message);
+size_t vcsec__whitelist_info__get_packed_size
+                     (const VCSEC__WhitelistInfo   *message);
+size_t vcsec__whitelist_info__pack
+                     (const VCSEC__WhitelistInfo   *message,
+                      uint8_t             *out);
+size_t vcsec__whitelist_info__pack_to_buffer
+                     (const VCSEC__WhitelistInfo   *message,
+                      ProtobufCBuffer     *buffer);
+VCSEC__WhitelistInfo *
+       vcsec__whitelist_info__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   vcsec__whitelist_info__free_unpacked
+                     (VCSEC__WhitelistInfo *message,
+                      ProtobufCAllocator *allocator);
+/* VCSEC__WhitelistEntryInfo methods */
+void   vcsec__whitelist_entry_info__init
+                     (VCSEC__WhitelistEntryInfo         *message);
+size_t vcsec__whitelist_entry_info__get_packed_size
+                     (const VCSEC__WhitelistEntryInfo   *message);
+size_t vcsec__whitelist_entry_info__pack
+                     (const VCSEC__WhitelistEntryInfo   *message,
+                      uint8_t             *out);
+size_t vcsec__whitelist_entry_info__pack_to_buffer
+                     (const VCSEC__WhitelistEntryInfo   *message,
+                      ProtobufCBuffer     *buffer);
+VCSEC__WhitelistEntryInfo *
+       vcsec__whitelist_entry_info__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   vcsec__whitelist_entry_info__free_unpacked
+                     (VCSEC__WhitelistEntryInfo *message,
+                      ProtobufCAllocator *allocator);
 /* VCSEC__InformationRequest methods */
 void   vcsec__information_request__init
                      (VCSEC__InformationRequest         *message);
@@ -551,6 +651,25 @@ VCSEC__InformationRequest *
                       const uint8_t       *data);
 void   vcsec__information_request__free_unpacked
                      (VCSEC__InformationRequest *message,
+                      ProtobufCAllocator *allocator);
+/* VCSEC__ClosureMoveRequest methods */
+void   vcsec__closure_move_request__init
+                     (VCSEC__ClosureMoveRequest         *message);
+size_t vcsec__closure_move_request__get_packed_size
+                     (const VCSEC__ClosureMoveRequest   *message);
+size_t vcsec__closure_move_request__pack
+                     (const VCSEC__ClosureMoveRequest   *message,
+                      uint8_t             *out);
+size_t vcsec__closure_move_request__pack_to_buffer
+                     (const VCSEC__ClosureMoveRequest   *message,
+                      ProtobufCBuffer     *buffer);
+VCSEC__ClosureMoveRequest *
+       vcsec__closure_move_request__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   vcsec__closure_move_request__free_unpacked
+                     (VCSEC__ClosureMoveRequest *message,
                       ProtobufCAllocator *allocator);
 /* VCSEC__PermissionChange methods */
 void   vcsec__permission_change__init
@@ -571,6 +690,25 @@ VCSEC__PermissionChange *
 void   vcsec__permission_change__free_unpacked
                      (VCSEC__PermissionChange *message,
                       ProtobufCAllocator *allocator);
+/* VCSEC__ReplaceKey methods */
+void   vcsec__replace_key__init
+                     (VCSEC__ReplaceKey         *message);
+size_t vcsec__replace_key__get_packed_size
+                     (const VCSEC__ReplaceKey   *message);
+size_t vcsec__replace_key__pack
+                     (const VCSEC__ReplaceKey   *message,
+                      uint8_t             *out);
+size_t vcsec__replace_key__pack_to_buffer
+                     (const VCSEC__ReplaceKey   *message,
+                      ProtobufCBuffer     *buffer);
+VCSEC__ReplaceKey *
+       vcsec__replace_key__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   vcsec__replace_key__free_unpacked
+                     (VCSEC__ReplaceKey *message,
+                      ProtobufCAllocator *allocator);
 /* VCSEC__WhitelistOperation methods */
 void   vcsec__whitelist_operation__init
                      (VCSEC__WhitelistOperation         *message);
@@ -589,63 +727,6 @@ VCSEC__WhitelistOperation *
                       const uint8_t       *data);
 void   vcsec__whitelist_operation__free_unpacked
                      (VCSEC__WhitelistOperation *message,
-                      ProtobufCAllocator *allocator);
-/* VCSEC__UnsignedMessage methods */
-void   vcsec__unsigned_message__init
-                     (VCSEC__UnsignedMessage         *message);
-size_t vcsec__unsigned_message__get_packed_size
-                     (const VCSEC__UnsignedMessage   *message);
-size_t vcsec__unsigned_message__pack
-                     (const VCSEC__UnsignedMessage   *message,
-                      uint8_t             *out);
-size_t vcsec__unsigned_message__pack_to_buffer
-                     (const VCSEC__UnsignedMessage   *message,
-                      ProtobufCBuffer     *buffer);
-VCSEC__UnsignedMessage *
-       vcsec__unsigned_message__unpack
-                     (ProtobufCAllocator  *allocator,
-                      size_t               len,
-                      const uint8_t       *data);
-void   vcsec__unsigned_message__free_unpacked
-                     (VCSEC__UnsignedMessage *message,
-                      ProtobufCAllocator *allocator);
-/* VCSEC__ClosureStatuses methods */
-void   vcsec__closure_statuses__init
-                     (VCSEC__ClosureStatuses         *message);
-size_t vcsec__closure_statuses__get_packed_size
-                     (const VCSEC__ClosureStatuses   *message);
-size_t vcsec__closure_statuses__pack
-                     (const VCSEC__ClosureStatuses   *message,
-                      uint8_t             *out);
-size_t vcsec__closure_statuses__pack_to_buffer
-                     (const VCSEC__ClosureStatuses   *message,
-                      ProtobufCBuffer     *buffer);
-VCSEC__ClosureStatuses *
-       vcsec__closure_statuses__unpack
-                     (ProtobufCAllocator  *allocator,
-                      size_t               len,
-                      const uint8_t       *data);
-void   vcsec__closure_statuses__free_unpacked
-                     (VCSEC__ClosureStatuses *message,
-                      ProtobufCAllocator *allocator);
-/* VCSEC__VehicleStatus methods */
-void   vcsec__vehicle_status__init
-                     (VCSEC__VehicleStatus         *message);
-size_t vcsec__vehicle_status__get_packed_size
-                     (const VCSEC__VehicleStatus   *message);
-size_t vcsec__vehicle_status__pack
-                     (const VCSEC__VehicleStatus   *message,
-                      uint8_t             *out);
-size_t vcsec__vehicle_status__pack_to_buffer
-                     (const VCSEC__VehicleStatus   *message,
-                      ProtobufCBuffer     *buffer);
-VCSEC__VehicleStatus *
-       vcsec__vehicle_status__unpack
-                     (ProtobufCAllocator  *allocator,
-                      size_t               len,
-                      const uint8_t       *data);
-void   vcsec__vehicle_status__free_unpacked
-                     (VCSEC__VehicleStatus *message,
                       ProtobufCAllocator *allocator);
 /* VCSEC__WhitelistOperationStatus methods */
 void   vcsec__whitelist_operation_status__init
@@ -704,6 +785,82 @@ VCSEC__CommandStatus *
 void   vcsec__command_status__free_unpacked
                      (VCSEC__CommandStatus *message,
                       ProtobufCAllocator *allocator);
+/* VCSEC__UnsignedMessage methods */
+void   vcsec__unsigned_message__init
+                     (VCSEC__UnsignedMessage         *message);
+size_t vcsec__unsigned_message__get_packed_size
+                     (const VCSEC__UnsignedMessage   *message);
+size_t vcsec__unsigned_message__pack
+                     (const VCSEC__UnsignedMessage   *message,
+                      uint8_t             *out);
+size_t vcsec__unsigned_message__pack_to_buffer
+                     (const VCSEC__UnsignedMessage   *message,
+                      ProtobufCBuffer     *buffer);
+VCSEC__UnsignedMessage *
+       vcsec__unsigned_message__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   vcsec__unsigned_message__free_unpacked
+                     (VCSEC__UnsignedMessage *message,
+                      ProtobufCAllocator *allocator);
+/* VCSEC__ClosureStatuses methods */
+void   vcsec__closure_statuses__init
+                     (VCSEC__ClosureStatuses         *message);
+size_t vcsec__closure_statuses__get_packed_size
+                     (const VCSEC__ClosureStatuses   *message);
+size_t vcsec__closure_statuses__pack
+                     (const VCSEC__ClosureStatuses   *message,
+                      uint8_t             *out);
+size_t vcsec__closure_statuses__pack_to_buffer
+                     (const VCSEC__ClosureStatuses   *message,
+                      ProtobufCBuffer     *buffer);
+VCSEC__ClosureStatuses *
+       vcsec__closure_statuses__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   vcsec__closure_statuses__free_unpacked
+                     (VCSEC__ClosureStatuses *message,
+                      ProtobufCAllocator *allocator);
+/* VCSEC__DetailedClosureStatus methods */
+void   vcsec__detailed_closure_status__init
+                     (VCSEC__DetailedClosureStatus         *message);
+size_t vcsec__detailed_closure_status__get_packed_size
+                     (const VCSEC__DetailedClosureStatus   *message);
+size_t vcsec__detailed_closure_status__pack
+                     (const VCSEC__DetailedClosureStatus   *message,
+                      uint8_t             *out);
+size_t vcsec__detailed_closure_status__pack_to_buffer
+                     (const VCSEC__DetailedClosureStatus   *message,
+                      ProtobufCBuffer     *buffer);
+VCSEC__DetailedClosureStatus *
+       vcsec__detailed_closure_status__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   vcsec__detailed_closure_status__free_unpacked
+                     (VCSEC__DetailedClosureStatus *message,
+                      ProtobufCAllocator *allocator);
+/* VCSEC__VehicleStatus methods */
+void   vcsec__vehicle_status__init
+                     (VCSEC__VehicleStatus         *message);
+size_t vcsec__vehicle_status__get_packed_size
+                     (const VCSEC__VehicleStatus   *message);
+size_t vcsec__vehicle_status__pack
+                     (const VCSEC__VehicleStatus   *message,
+                      uint8_t             *out);
+size_t vcsec__vehicle_status__pack_to_buffer
+                     (const VCSEC__VehicleStatus   *message,
+                      ProtobufCBuffer     *buffer);
+VCSEC__VehicleStatus *
+       vcsec__vehicle_status__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   vcsec__vehicle_status__free_unpacked
+                     (VCSEC__VehicleStatus *message,
+                      ProtobufCAllocator *allocator);
 /* VCSEC__FromVCSECMessage methods */
 void   vcsec__from_vcsecmessage__init
                      (VCSEC__FromVCSECMessage         *message);
@@ -740,23 +897,26 @@ typedef void (*VCSEC__KeyMetadata_Closure)
 typedef void (*VCSEC__PublicKey_Closure)
                  (const VCSEC__PublicKey *message,
                   void *closure_data);
+typedef void (*VCSEC__WhitelistInfo_Closure)
+                 (const VCSEC__WhitelistInfo *message,
+                  void *closure_data);
+typedef void (*VCSEC__WhitelistEntryInfo_Closure)
+                 (const VCSEC__WhitelistEntryInfo *message,
+                  void *closure_data);
 typedef void (*VCSEC__InformationRequest_Closure)
                  (const VCSEC__InformationRequest *message,
+                  void *closure_data);
+typedef void (*VCSEC__ClosureMoveRequest_Closure)
+                 (const VCSEC__ClosureMoveRequest *message,
                   void *closure_data);
 typedef void (*VCSEC__PermissionChange_Closure)
                  (const VCSEC__PermissionChange *message,
                   void *closure_data);
+typedef void (*VCSEC__ReplaceKey_Closure)
+                 (const VCSEC__ReplaceKey *message,
+                  void *closure_data);
 typedef void (*VCSEC__WhitelistOperation_Closure)
                  (const VCSEC__WhitelistOperation *message,
-                  void *closure_data);
-typedef void (*VCSEC__UnsignedMessage_Closure)
-                 (const VCSEC__UnsignedMessage *message,
-                  void *closure_data);
-typedef void (*VCSEC__ClosureStatuses_Closure)
-                 (const VCSEC__ClosureStatuses *message,
-                  void *closure_data);
-typedef void (*VCSEC__VehicleStatus_Closure)
-                 (const VCSEC__VehicleStatus *message,
                   void *closure_data);
 typedef void (*VCSEC__WhitelistOperationStatus_Closure)
                  (const VCSEC__WhitelistOperationStatus *message,
@@ -766,6 +926,18 @@ typedef void (*VCSEC__SignedMessageStatus_Closure)
                   void *closure_data);
 typedef void (*VCSEC__CommandStatus_Closure)
                  (const VCSEC__CommandStatus *message,
+                  void *closure_data);
+typedef void (*VCSEC__UnsignedMessage_Closure)
+                 (const VCSEC__UnsignedMessage *message,
+                  void *closure_data);
+typedef void (*VCSEC__ClosureStatuses_Closure)
+                 (const VCSEC__ClosureStatuses *message,
+                  void *closure_data);
+typedef void (*VCSEC__DetailedClosureStatus_Closure)
+                 (const VCSEC__DetailedClosureStatus *message,
+                  void *closure_data);
+typedef void (*VCSEC__VehicleStatus_Closure)
+                 (const VCSEC__VehicleStatus *message,
                   void *closure_data);
 typedef void (*VCSEC__FromVCSECMessage_Closure)
                  (const VCSEC__FromVCSECMessage *message,
@@ -780,25 +952,33 @@ extern const ProtobufCEnumDescriptor    vcsec__signature_type__descriptor;
 extern const ProtobufCEnumDescriptor    vcsec__key_form_factor__descriptor;
 extern const ProtobufCEnumDescriptor    vcsec__information_request_type__descriptor;
 extern const ProtobufCEnumDescriptor    vcsec__rkeaction__e__descriptor;
+extern const ProtobufCEnumDescriptor    vcsec__closure_move_type__e__descriptor;
+extern const ProtobufCEnumDescriptor    vcsec__operation_status__e__descriptor;
+extern const ProtobufCEnumDescriptor    vcsec__signed_message_information__e__descriptor;
+extern const ProtobufCEnumDescriptor    vcsec__whitelist_operation_information__e__descriptor;
 extern const ProtobufCEnumDescriptor    vcsec__closure_state__e__descriptor;
 extern const ProtobufCEnumDescriptor    vcsec__vehicle_lock_state__e__descriptor;
 extern const ProtobufCEnumDescriptor    vcsec__vehicle_sleep_status__e__descriptor;
 extern const ProtobufCEnumDescriptor    vcsec__user_presence__e__descriptor;
-extern const ProtobufCEnumDescriptor    vcsec__operation_status__e__descriptor;
 extern const ProtobufCMessageDescriptor vcsec__signed_message__descriptor;
 extern const ProtobufCMessageDescriptor vcsec__to_vcsecmessage__descriptor;
 extern const ProtobufCMessageDescriptor vcsec__key_identifier__descriptor;
 extern const ProtobufCMessageDescriptor vcsec__key_metadata__descriptor;
 extern const ProtobufCMessageDescriptor vcsec__public_key__descriptor;
+extern const ProtobufCMessageDescriptor vcsec__whitelist_info__descriptor;
+extern const ProtobufCMessageDescriptor vcsec__whitelist_entry_info__descriptor;
 extern const ProtobufCMessageDescriptor vcsec__information_request__descriptor;
+extern const ProtobufCMessageDescriptor vcsec__closure_move_request__descriptor;
 extern const ProtobufCMessageDescriptor vcsec__permission_change__descriptor;
+extern const ProtobufCMessageDescriptor vcsec__replace_key__descriptor;
 extern const ProtobufCMessageDescriptor vcsec__whitelist_operation__descriptor;
-extern const ProtobufCMessageDescriptor vcsec__unsigned_message__descriptor;
-extern const ProtobufCMessageDescriptor vcsec__closure_statuses__descriptor;
-extern const ProtobufCMessageDescriptor vcsec__vehicle_status__descriptor;
 extern const ProtobufCMessageDescriptor vcsec__whitelist_operation_status__descriptor;
 extern const ProtobufCMessageDescriptor vcsec__signed_message_status__descriptor;
 extern const ProtobufCMessageDescriptor vcsec__command_status__descriptor;
+extern const ProtobufCMessageDescriptor vcsec__unsigned_message__descriptor;
+extern const ProtobufCMessageDescriptor vcsec__closure_statuses__descriptor;
+extern const ProtobufCMessageDescriptor vcsec__detailed_closure_status__descriptor;
+extern const ProtobufCMessageDescriptor vcsec__vehicle_status__descriptor;
 extern const ProtobufCMessageDescriptor vcsec__from_vcsecmessage__descriptor;
 
 PROTOBUF_C__END_DECLS

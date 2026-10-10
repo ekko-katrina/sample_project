@@ -51,9 +51,7 @@ uint32_t tesla_build_session_info_request(
     const uint8_t *public_key,
     const uint8_t *routing_address)
 {
-    uint8_t challenge[16];
     uint8_t uuid[16];
-    esp_fill_random(challenge, sizeof(challenge));
     esp_fill_random(uuid, sizeof(uuid));
 
     UniversalMessage__Destination to_dest = UNIVERSAL_MESSAGE__DESTINATION__INIT;
@@ -68,8 +66,6 @@ uint32_t tesla_build_session_info_request(
     UniversalMessage__SessionInfoRequest session_req = UNIVERSAL_MESSAGE__SESSION_INFO_REQUEST__INIT;
     session_req.public_key.data = (uint8_t *)public_key;
     session_req.public_key.len = 65;
-    session_req.challenge.data = challenge;
-    session_req.challenge.len = sizeof(challenge);
 
     UniversalMessage__RoutableMessage msg = UNIVERSAL_MESSAGE__ROUTABLE_MESSAGE__INIT;
     msg.to_destination = &to_dest;
@@ -291,7 +287,7 @@ uint32_t tesla_build_metadata(
 // 构建用于响应解密的元数据（与请求元数据不同）
 // 响应元数据格式：sig_type, domain, VIN, counter, flags, request_hash, fault
 // request_id 是 17 字节：signature_type(1) + GCM_tag(16) 来自原始请求
-static uint32_t tesla_build_response_metadata(
+uint32_t tesla_build_response_metadata(
     uint8_t *buf,
     tesla_domain_t domain,
     const char *vin,
@@ -394,7 +390,7 @@ uint32_t tesla_build_routable_message(
     uint32_t current_local_sec = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS / 1000);
     uint32_t elapsed_sec = current_local_sec - session->local_time_sec;
     uint32_t current_vehicle_clock = session->clock_time + elapsed_sec;
-    uint32_t expires_at = current_vehicle_clock + 30;
+    uint32_t expires_at = current_vehicle_clock + 5; // SDK defaultExpiration
 
     uint32_t metadata_len = tesla_build_metadata(metadata,
         TESLA_SIG_AES_GCM_PERSONALIZED,
@@ -589,9 +585,15 @@ bool tesla_parse_vehicle_status(
         return false;
     }
 
-    VCSEC__FromVCSECMessage *from_vcsec = vcsec__from_vcsecmessage__unpack(NULL,
-        rmsg->protobuf_message_as_bytes.len, rmsg->protobuf_message_as_bytes.data);
+    bool ok = tesla_parse_body_payload(rmsg->protobuf_message_as_bytes.data,
+        rmsg->protobuf_message_as_bytes.len, state);
     universal_message__routable_message__free_unpacked(rmsg, NULL);
+    return ok;
+}
+
+bool tesla_parse_body_payload(const uint8_t *data, uint32_t len, tesla_body_state_t *state)
+{
+    VCSEC__FromVCSECMessage *from_vcsec = vcsec__from_vcsecmessage__unpack(NULL, len, data);
     if (!from_vcsec || from_vcsec->sub_message_case != VCSEC__FROM_VCSECMESSAGE__SUB_MESSAGE_VEHICLE_STATUS ||
         !from_vcsec->vehiclestatus) {
         if (from_vcsec) vcsec__from_vcsecmessage__free_unpacked(from_vcsec, NULL);
@@ -616,120 +618,6 @@ bool tesla_parse_vehicle_status(
     return true;
 }
 
-/**
- * 解析并解密加密的 RoutableMessage 响应（protobuf-c）
- * @param data 响应数据
- * @param len 响应数据长度
- * @param session 会话
- * @param vin 车辆 VIN
- * @param request_id 请求 ID
- * @param plaintext 解密后的负载
- * @param plaintext_len 解密后的负载长度
- * @param fault 故障码
- * @return true 成功，false 失败
- */
-bool tesla_parse_and_decrypt_response(
-    const uint8_t *data,
-    uint32_t len,
-    const tesla_session_t *session,
-    const char *vin,
-    const uint8_t *request_id,
-    uint8_t *plaintext,
-    uint32_t *plaintext_len,
-    tesla_fault_t *fault)
-{
-    *fault = TESLA_FAULT_NONE;
-    *plaintext_len = 0;
-    if (len < 2) return false;
-
-    UniversalMessage__RoutableMessage *rmsg = universal_message__routable_message__unpack(NULL, len, data);
-    if (!rmsg) return false;
-
-    uint32_t from_domain = 0;
-    if (rmsg->from_destination && rmsg->from_destination->sub_destination_case ==
-        UNIVERSAL_MESSAGE__DESTINATION__SUB_DESTINATION_DOMAIN) {
-        from_domain = rmsg->from_destination->domain;
-    }
-    if (from_domain != TESLA_DOMAIN_INFOTAINMENT) {
-        universal_message__routable_message__free_unpacked(rmsg, NULL);
-        return false;
-    }
-
-    if (rmsg->payload_case != UNIVERSAL_MESSAGE__ROUTABLE_MESSAGE__PAYLOAD_PROTOBUF_MESSAGE_AS_BYTES ||
-        !rmsg->protobuf_message_as_bytes.data || rmsg->protobuf_message_as_bytes.len == 0) {
-        if (rmsg->signedmessagestatus) {
-            *fault = (tesla_fault_t)rmsg->signedmessagestatus->signed_message_fault;
-        }
-        universal_message__routable_message__free_unpacked(rmsg, NULL);
-        return false;
-    }
-
-    if (rmsg->signedmessagestatus) {
-        *fault = (tesla_fault_t)rmsg->signedmessagestatus->signed_message_fault;
-    }
-    if (*fault != TESLA_FAULT_NONE) {
-        universal_message__routable_message__free_unpacked(rmsg, NULL);
-        return false;
-    }
-
-    uint32_t counter = 0;
-    uint8_t nonce[12] = {0};
-    uint8_t tag[16] = {0};
-    bool have_gcm = false;
-    if (rmsg->sub_sig_data_case == UNIVERSAL_MESSAGE__ROUTABLE_MESSAGE__SUB_SIG_DATA_SIGNATURE_DATA &&
-        rmsg->signature_data &&
-        rmsg->signature_data->sig_type_case == SIGNATURES__SIGNATURE_DATA__SIG_TYPE_AES__GCM__RESPONSE_DATA &&
-        rmsg->signature_data->aes_gcm_response_data) {
-        Signatures__AESGCMResponseSignatureData *gcm = rmsg->signature_data->aes_gcm_response_data;
-        counter = gcm->counter;
-        if (gcm->nonce.len == 12) {
-            memcpy(nonce, gcm->nonce.data, 12);
-        }
-        if (gcm->tag.len == 16) {
-            memcpy(tag, gcm->tag.data, 16);
-        }
-        have_gcm = (gcm->nonce.len == 12 && gcm->tag.len == 16);
-    }
-
-    uint32_t ciphertext_len = (uint32_t)rmsg->protobuf_message_as_bytes.len;
-    uint32_t response_flags = rmsg->flags;
-    uint8_t ciphertext_buf[512];
-    if (ciphertext_len > sizeof(ciphertext_buf)) {
-        universal_message__routable_message__free_unpacked(rmsg, NULL);
-        return false;
-    }
-    memcpy(ciphertext_buf, rmsg->protobuf_message_as_bytes.data, ciphertext_len);
-    universal_message__routable_message__free_unpacked(rmsg, NULL);
-
-    if (!have_gcm) {
-        ESP_LOGW(TAG, "Missing nonce or tag for decryption");
-        return false;
-    }
-
-    uint8_t metadata[128];
-    uint32_t metadata_len = tesla_build_response_metadata(metadata,
-        (tesla_domain_t)from_domain, vin, counter, response_flags,
-        request_id, request_id ? 17 : 0, (uint32_t)*fault);
-
-    uint8_t aad_hash[32];
-    tesla_crypto_sha256(metadata, metadata_len, aad_hash);
-
-    if (!tesla_crypto_decrypt_gcm(session->session_key, nonce, aad_hash, 32,
-                                   ciphertext_buf, ciphertext_len, tag, plaintext)) {
-        ESP_LOGE(TAG, "Decryption failed");
-        return false;
-    }
-    *plaintext_len = ciphertext_len;
-    return true;
-}
-
-/**
- * @brief 从 CarServer 响应中解析 DriveState（使用 protobuf-c 生成的 CarServer__Response）
- * @param data 响应数据
- * @param len 响应数据长度
- * @param state 输出驾驶状态
- * @return true 成功，false 失败
- */
 bool tesla_parse_drive_state(
     const uint8_t *data,
     uint32_t len,
@@ -752,7 +640,18 @@ bool tesla_parse_drive_state(
         return false;
     }
 
+    if (resp->actionstatus && resp->actionstatus->result != CAR_SERVER__OPERATION_STATUS__E__OPERATIONSTATUS_OK) {
+        ESP_LOGW(TAG, "CarServer rejected drive query");
+        car_server__response__free_unpacked(resp, &s_default_allocator);
+        return false;
+    }
     CarServer__DriveState *ds = resp->vehicledata->drive_state;
+    if ((ds->optional_speed_case == 0 && ds->optional_speed_float_case == 0) ||
+        ds->optional_power_case == 0 ||
+        (ds->timestamp && (ds->timestamp->seconds < 0 || ds->timestamp->nanos < 0 || ds->timestamp->nanos >= 1000000000))) {
+        car_server__response__free_unpacked(resp, &s_default_allocator);
+        return false;
+    }
     if (!ds->shift_state || ds->shift_state->type_case == CAR_SERVER__SHIFT_STATE__TYPE__NOT_SET ||
         ds->shift_state->type_case == CAR_SERVER__SHIFT_STATE__TYPE_INVALID) {
         car_server__response__free_unpacked(resp, &s_default_allocator);
@@ -785,7 +684,15 @@ bool tesla_parse_drive_state(
         break;
     }
 
-    state->speed_kmh = (ds->speed_float != 0.0f) ? ds->speed_float : (float)ds->speed;
+    state->speed_present = ds->optional_speed_float_case != 0 || ds->optional_speed_case != 0;
+    state->power_present = ds->optional_power_case != 0;
+    state->odometer_present = ds->optional_odometer_case != 0;
+    state->timestamp_present = ds->timestamp != NULL;
+    state->speed_kmh = ds->optional_speed_float_case != 0 ? ds->speed_float : (float)ds->speed;
+    if (ds->timestamp) {
+        state->timestamp_seconds = ds->timestamp->seconds;
+        state->timestamp_nanos = ds->timestamp->nanos;
+    }
     state->power_kw = ds->power;
     state->odometer_km = (float)ds->odometer_in_hundredths_of_a_mile / 100.0f * 1.60934f;
 
@@ -832,14 +739,12 @@ void tesla_parse_vcsec_response(const uint8_t *data, uint32_t len)
 
         if (cs->sub_message_case == VCSEC__COMMAND_STATUS__SUB_MESSAGE_WHITELIST_OPERATION_STATUS) {
             VCSEC__WhitelistOperationStatus *ws = cs->whitelistoperationstatus;
-            ESP_LOGI(TAG, "  whitelistOperationStatus: info=%lu signer=%lu op=%lu",
-                     (unsigned long)ws->whitelistoperationinformation,
-                     (unsigned long)ws->signerofoperation,
-                     (unsigned long)ws->operationforkeyinwhitelist);
+            ESP_LOGI(TAG, "  whitelistOperationStatus: info=%lu",
+                     (unsigned long)ws->whitelistoperationinformation);
         } else if (cs->sub_message_case == VCSEC__COMMAND_STATUS__SUB_MESSAGE_SIGNED_MESSAGE_STATUS) {
             VCSEC__SignedMessageStatus *sms = cs->signedmessagestatus;
             ESP_LOGI(TAG, "  signedMessageStatus: counter=%lu fault=%lu",
-                     (unsigned long)sms->counter, (unsigned long)sms->signedmessagefault);
+                     (unsigned long)sms->counter, (unsigned long)sms->signedmessageinformation);
         }
         break;
     }

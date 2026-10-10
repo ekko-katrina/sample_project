@@ -58,7 +58,7 @@ configured paired connectionState stage errorCode VIN_LEN VIN...
 
 `paired=1` 表示历史上认证成功，不保证车辆此刻仍保留钥匙。发送添加钥匙请求或等待授权结束不能直接标记已配对；普通断开、休眠或通信超时不能直接清除此标记。只有车辆明确拒绝当前钥匙时才清除，并进入重新配对流程。
 
-App 仅在 `connectionState=05、stage=06、errorCode=00` 时显示“车辆已连接”。`stage=05` 仅表示配对结果；`connectionState=03` 仅表示 BLE 已连接，均不能作为车辆认证成功的依据。认证成功不等于车速等数据已经返回，App 必须等待实际车辆数据帧后才能显示新数值；C1/C3 本身不包含车速、档位或数据时间戳。
+App 仅在 `configured=1、paired=1、connectionState=05、stage=06、errorCode=00` 时显示“车辆已连接”。`stage=05` 仅表示配对结果；`connectionState=03` 仅表示 BLE 已连接，均不能作为车辆认证成功的依据。认证成功不等于车速等数据已经返回，App 必须等待实际车辆数据帧后才能显示新数值；C1/C3 本身不包含车速、档位或数据时间戳。
 
 等待授权期间，固件在会话请求结束后约每 2 秒再次尝试认证，授权等待窗口为 60 秒。认证成功后立即发送 C3/stage=05（已配对）和 C3/stage=06（已认证），保留当前车辆连接并开始查询状态，不再等待满 60 秒或断开重连。App 收到 stage=06 即可结束连接等待，无需等车速查询完成。
 
@@ -203,3 +203,18 @@ A5 5A 15 C2 11 54 45 53 54 56 41 4E 31 32 33 34 35 36 37 38
 等待 100 ms，第二片（4 字节）：
 39 30 77 AA
 ```
+
+
+## 2026-10-10 官方协议校验迁移（固件 1.0.7）
+
+官方基准：vehicle-command `a4b43c1eff0e09d77deb9f2dce97031141fe8c8a`（2026-09-25）。C0～C4 格式、错误码及停止持久化行为不变。
+
+- ESP32 实际发现 CCCD，订阅车辆 Indication，分包等待 ATT Write Request 确认。手机侧现有 Notify 服务保持原协议。
+- state=05 只在 VCSEC 会话的请求关联和 SessionInfo HMAC 校验通过后发布。Infotainment 会话在驾驶查询前独立校验；认证成功仍不等于首次车辆数据已返回。
+- 拆帧保留连续多帧，使用独立接收队列和解析快照。回复按域、路由地址及适用的 request_uuid 匹配；加密回复验证 GCM 和防重放 counter。
+- 车辆签名 SessionInfo 可更新失步会话；普通校验失败不清除 paired。明确关联当前请求的钥匙拒绝仍返回 09。
+- 官方旧固件明文回复可兼容；存在 GCM 签名但校验失败不能按明文接收。
+- 驾驶数据区分未提供与零值，检查 ActionStatus；带时间戳的重复或倒退样本不能刷新 15 秒期限，心跳也不能刷新数据期限。旧固件缺少时间戳时只能以有效回复接收时间计时。
+- App 成功还必须满足 configured=1、paired=1，既有 C2/C4 操作边界和停止确认继续有效。
+
+详细算法、车辆控制 C API 的结果未确认返回值、测试方式和实车项目见 `components/tesla_ble/OFFICIAL_PROTOCOL.md`。这次没有向 App 暴露车辆物理控制命令。

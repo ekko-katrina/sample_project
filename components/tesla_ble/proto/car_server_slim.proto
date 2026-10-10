@@ -26,11 +26,17 @@ message ShiftState {
 // 行驶状态（vehicle.proto DriveState）。仅定义当前解析的字段；完整定义含 timestamp、active_route_* 等
 message DriveState {
     ShiftState shift_state = 1;  // 档位状态
-    uint32 speed = 102;                           // 车速（原始整型，部分固件用 speed_float）
-    int32 power = 103;                           // 功率 kW，正为驱动、负为回收
-    int32 odometer_in_hundredths_of_a_mile = 105; // 里程，百分之一英里
-    float speed_float = 106;                     // 车速浮点 km/h
+    oneof optional_speed { uint32 speed = 102; }
+    oneof optional_power { int32 power = 103; }
+    oneof optional_odometer { int32 odometer_in_hundredths_of_a_mile = 105; }
+    oneof optional_speed_float { float speed_float = 106; }
+    Timestamp timestamp = 4;
 }
+// Same wire fields as google.protobuf.Timestamp; avoids a runtime dependency.
+message Timestamp { int64 seconds = 1; int32 nanos = 2; }
+enum OperationStatus_E { OPERATIONSTATUS_OK = 0; OPERATIONSTATUS_ERROR = 1; }
+message ResultReason { oneof reason { string plain_text = 1; } }
+message ActionStatus { OperationStatus_E result = 1; ResultReason result_reason = 2; }
 
 // 车辆数据（vehicle.proto VehicleData）。完整定义含 charge_state、climate_state、location_state 等；此处仅取 drive_state
 message VehicleData {
@@ -39,6 +45,7 @@ message VehicleData {
 
 // CarServer 响应（car_server.proto Response）。完整定义含 actionStatus、getSessionInfoResponse 等；此处仅取 vehicleData 用于解析 DriveState
 message Response {
+    ActionStatus actionStatus = 1;
     VehicleData vehicleData = 2;
 }
 

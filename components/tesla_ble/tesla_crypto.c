@@ -22,6 +22,13 @@
 
 static const char *TAG = "TESLA_CRYPTO";
 
+bool tesla_crypto_hmac_sha256(const uint8_t *key, size_t key_len,
+    const uint8_t *data, size_t len, uint8_t output[32])
+{
+    return mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+        key, key_len, data, len, output) == 0;
+}
+
 // 随机数生成器上下文
 static mbedtls_entropy_context entropy;
 static mbedtls_ctr_drbg_context ctr_drbg;

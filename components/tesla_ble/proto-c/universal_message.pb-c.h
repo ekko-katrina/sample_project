@@ -24,15 +24,8 @@ typedef struct UniversalMessage__RoutableMessage UniversalMessage__RoutableMessa
 
 /* --- enums --- */
 
-/*
- * 目标域：车辆子系统，各有独立公钥与握手状态
- * VCSEC 控制锁、远程启动、后备箱等，休眠时也可通过 BLE 访问；Infotainment 处理其余命令
- */
 typedef enum _UniversalMessage__Domain {
   UNIVERSAL_MESSAGE__DOMAIN__DOMAIN_BROADCAST = 0,
-  /*
-   * VCSEC
-   */
   UNIVERSAL_MESSAGE__DOMAIN__DOMAIN_VEHICLE_SECURITY = 2,
   UNIVERSAL_MESSAGE__DOMAIN__DOMAIN_INFOTAINMENT = 3
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(UNIVERSAL_MESSAGE__DOMAIN)
@@ -43,113 +36,109 @@ typedef enum _UniversalMessage__OperationStatusE {
   UNIVERSAL_MESSAGE__OPERATION_STATUS__E__OPERATIONSTATUS_ERROR = 2
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(UNIVERSAL_MESSAGE__OPERATION_STATUS__E)
 } UniversalMessage__OperationStatusE;
-/*
- * 消息故障码：协议层错误，由车辆在 signedMessageStatus 中返回
- * 应用层错误在 protobuf_message_as_bytes 内（如 VCSEC CommandStatus）
- */
 typedef enum _UniversalMessage__MessageFaultE {
   /*
-   * 请求成功
+   * Request succeeded.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_NONE = 0,
   /*
-   * 车辆子系统忙，请重试
+   * Required vehicle subsystem is busy. Try again.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_BUSY = 1,
   /*
-   * 子系统未响应，请重试
+   * Vehicle subsystem did not respond. Try again.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_TIMEOUT = 2,
   /*
-   * 车辆未识别该密钥，请确认已配对
+   * Vehicle did not recognize the key used to authorize command. Make sure your key is paired with the vehicle.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_UNKNOWN_KEY_ID = 3,
   /*
-   * 该密钥已被禁用
+   * Key used to authorize command has been disabled.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_INACTIVE_KEY = 4,
   /*
-   * 签名/MAC 错误，请用返回的 session info 更新会话后重试
+   * Command signature/MAC is incorrect. Use included session info to update session and try again.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_INVALID_SIGNATURE = 5,
   /*
-   * 防重放计数已用过，请更新 session 后重试
+   * Command anti-replay counter has been used before. Use included session info to update session and try again.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_INVALID_TOKEN_OR_COUNTER = 6,
   /*
-   * 无权限（角色或车辆状态）
+   * User is not authorized to execute command. This can be because of the role or because of vehicle state.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_INSUFFICIENT_PRIVILEGES = 7,
   /*
-   * 命令格式错误或发往不可识别的域（客户端或固件过旧）
+   * Command was malformed or addressed to an unrecognized vehicle system. May indicate client error or older vehicle firmware.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_INVALID_DOMAINS = 8,
   /*
-   * 未识别的命令（客户端或固件不支持）
+   * Unrecognized command. May indicate client error or unsupported vehicle firmware.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_INVALID_COMMAND = 9,
   /*
-   * 无法解析命令，多为客户端错误
+   * Could not parse command. Indicates client error.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_DECODING = 10,
   /*
-   * 车辆内部错误，请重试（常见于车辆未完全启动）
+   * Internal vehicle error. Try again. Most commonly encountered when the vehicle has not finished booting.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_INTERNAL = 11,
   /*
-   * 命令发往了错误的 VIN
+   * Command sent to wrong VIN.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_WRONG_PERSONALIZATION = 12,
   /*
-   * 参数错误或已废弃
+   * Command was malformed or used a deprecated parameter.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_BAD_PARAMETER = 13,
   /*
-   * 密钥链已满，需先删除密钥
+   * Vehicle's keychain is full. You must delete a key before you can add another.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_KEYCHAIN_IS_FULL = 14,
   /*
-   * Session 不匹配，请用返回的 session info 更新
+   * Session ID mismatch. Use included session info to update session and try again.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_INCORRECT_EPOCH = 15,
   /*
-   * IV 长度错误（AES-GCM 应为 12 字节）
+   * Initialization Value length is incorrect (AES-GCM must use 12-byte IVs). Indicates a client programming error.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_IV_INCORRECT_LENGTH = 16,
   /*
-   * 命令已过期，请根据 session 检查时钟
+   * Command expired. Use included session info to determine if clocks have desynchronized and try again.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_TIME_EXPIRED = 17,
   /*
-   * 车辆未配置 VIN，可能需送修
+   * Vehicle has not been provisioned with a VIN and may require service.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_NOT_PROVISIONED_WITH_IDENTITY = 18,
   /*
-   * 车辆内部错误
+   * Internal vehicle error.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_COULD_NOT_HASH_METADATA = 19,
   /*
-   * 过期时间过远，安全拒绝
+   * Vehicle rejected command because its expiration time was too far in the future. This is a security precaution.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_TIME_TO_LIVE_TOO_LONG = 20,
   /*
-   * 车主已禁用远程访问
+   * The vehicle owner has disabled Mobile access.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_REMOTE_ACCESS_DISABLED = 21,
   /*
-   * 服务密钥未允许远程服务命令
+   * The command was authorized with a Service key, but the vehicle has not been configured to permit remote service commands.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_REMOTE_SERVICE_ACCESS_DISABLED = 22,
   /*
-   * 需 Tesla 账户凭证，请经 Fleet API 重发
+   * The command requires proof of Tesla account credentials but was not sent over a channel that provides this proof. Resend the command using Fleet API.
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_COMMAND_REQUIRES_ACCOUNT_CREDENTIALS = 23,
   /*
-   * 请求字段超过 MTU
+   * Client sent a request with a field that exceeds MTU
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_REQUEST_MTU_EXCEEDED = 24,
   /*
-   * 请求已收到，但响应超过 MTU
+   * Client's request was received, but response size exceeded MTU
    */
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_RESPONSE_MTU_EXCEEDED = 25,
   UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_REPEATED_COUNTER = 26,
@@ -159,9 +148,6 @@ typedef enum _UniversalMessage__MessageFaultE {
 } UniversalMessage__MessageFaultE;
 typedef enum _UniversalMessage__Flags {
   UNIVERSAL_MESSAGE__FLAGS__FLAG_USER_COMMAND = 0,
-  /*
-   * 请求车辆加密响应（2024.38+ 固件支持）
-   */
   UNIVERSAL_MESSAGE__FLAGS__FLAG_ENCRYPT_RESPONSE = 1
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(UNIVERSAL_MESSAGE__FLAGS)
 } UniversalMessage__Flags;
@@ -175,10 +161,6 @@ typedef enum {
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(UNIVERSAL_MESSAGE__DESTINATION__SUB_DESTINATION__CASE)
 } UniversalMessage__Destination__SubDestinationCase;
 
-/*
- * 目标：域枚举或 16 字节路由地址（随机生成，用于关联连接与响应）
- * 车辆在响应中会交换 to/from
- */
 struct  UniversalMessage__Destination
 {
   ProtobufCMessage base;
@@ -204,20 +186,10 @@ struct  UniversalMessage__MessageStatus
 , UNIVERSAL_MESSAGE__OPERATION_STATUS__E__OPERATIONSTATUS_OK, UNIVERSAL_MESSAGE__MESSAGE_FAULT__E__MESSAGEFAULT_ERROR_NONE }
 
 
-/*
- * 会话信息请求：握手时由客户端发送，携带公钥与 challenge
- * 见 protocol.md "Request"
- */
 struct  UniversalMessage__SessionInfoRequest
 {
   ProtobufCMessage base;
-  /*
-   * ENCODE_PUBLIC(C)，65 字节
-   */
   ProtobufCBinaryData public_key;
-  /*
-   * 随机字节（如 16 字节），用于响应认证
-   */
   ProtobufCBinaryData challenge;
 };
 #define UNIVERSAL_MESSAGE__SESSION_INFO_REQUEST__INIT \
@@ -239,43 +211,19 @@ typedef enum {
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(UNIVERSAL_MESSAGE__ROUTABLE_MESSAGE__SUB_SIG_DATA__CASE)
 } UniversalMessage__RoutableMessage__SubSigDataCase;
 
-/*
- * 可路由消息：顶层协议消息
- * to_destination：命令发往的域；from_destination：客户端 16 字节路由地址（车辆响应中会交换）
- * payload：protobuf_message_as_bytes 为应用负载（VCSEC 时为 VCSEC.UnsignedMessage）；或 session_info_request / session_info
- * uuid：最多 16 字节，需不可预测以防重放；响应中可能通过 request_uuid 回显（VCSEC 常因内存不填）
- */
 struct  UniversalMessage__RoutableMessage
 {
   ProtobufCMessage base;
   UniversalMessage__Destination *to_destination;
   UniversalMessage__Destination *from_destination;
-  /*
-   * 协议层错误时由车辆填充
-   */
   UniversalMessage__MessageStatus *signedmessagestatus;
-  /*
-   * 响应中回显请求的 uuid（若存在）
-   */
   ProtobufCBinaryData request_uuid;
   ProtobufCBinaryData uuid;
-  /*
-   * 位掩码，车辆会验证但忽略未知位
-   */
   uint32_t flags;
   UniversalMessage__RoutableMessage__PayloadCase payload_case;
   union {
-    /*
-     * 密文或明文应用负载
-     */
     ProtobufCBinaryData protobuf_message_as_bytes;
-    /*
-     * 握手响应（解码为 Signatures.SessionInfo）
-     */
     ProtobufCBinaryData session_info;
-    /*
-     * 握手请求
-     */
     UniversalMessage__SessionInfoRequest *session_info_request;
   };
   UniversalMessage__RoutableMessage__SubSigDataCase sub_sig_data_case;

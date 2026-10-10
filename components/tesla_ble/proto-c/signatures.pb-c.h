@@ -27,79 +27,25 @@ typedef struct Signatures__SessionInfo Signatures__SessionInfo;
 
 /* --- enums --- */
 
-/*
- * 元数据 TLV 序列化使用的标签（与 tesla_build_metadata / tesla_build_response_metadata 配合）
- */
 typedef enum _Signatures__Tag {
-  /*
-   * 签名/加密类型
-   */
   SIGNATURES__TAG__TAG_SIGNATURE_TYPE = 0,
-  /*
-   * 目标域
-   */
   SIGNATURES__TAG__TAG_DOMAIN = 1,
-  /*
-   * 个性化（VIN，17 字节）
-   */
   SIGNATURES__TAG__TAG_PERSONALIZATION = 2,
-  /*
-   * 域启动时生成的 16 字节 epoch_id
-   */
   SIGNATURES__TAG__TAG_EPOCH = 3,
-  /*
-   * 命令过期时间（域时钟秒数），大端 4 字节
-   */
   SIGNATURES__TAG__TAG_EXPIRES_AT = 4,
-  /*
-   * 防重放计数器，大端 4 字节
-   */
   SIGNATURES__TAG__TAG_COUNTER = 5,
-  /*
-   * 握手请求中的 challenge（如 UUID）
-   */
   SIGNATURES__TAG__TAG_CHALLENGE = 6,
-  /*
-   * 请求标志位掩码，大端 4 字节
-   */
   SIGNATURES__TAG__TAG_FLAGS = 7,
-  /*
-   * 响应解密时：原始请求的 request_hash（如 signature_type + GCM tag）
-   */
   SIGNATURES__TAG__TAG_REQUEST_HASH = 8,
-  /*
-   * 故障码
-   */
   SIGNATURES__TAG__TAG_FAULT = 9,
-  /*
-   * 元数据结束标记（0xFF）
-   */
   SIGNATURES__TAG__TAG_END = 255
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(SIGNATURES__TAG)
 } Signatures__Tag;
-/*
- * 签名/加密类型：用于请求认证与响应解密
- */
 typedef enum _Signatures__SignatureType {
-  /*
-   * AES-GCM 加密（未个性化）
-   */
   SIGNATURES__SIGNATURE_TYPE__SIGNATURE_TYPE_AES_GCM = 0,
-  /*
-   * 带 VIN 的 AES-GCM，BLE 常用
-   */
   SIGNATURES__SIGNATURE_TYPE__SIGNATURE_TYPE_AES_GCM_PERSONALIZED = 5,
-  /*
-   * HMAC-SHA256
-   */
   SIGNATURES__SIGNATURE_TYPE__SIGNATURE_TYPE_HMAC = 6,
-  /*
-   * 带 VIN 的 HMAC，Fleet API 常用
-   */
   SIGNATURES__SIGNATURE_TYPE__SIGNATURE_TYPE_HMAC_PERSONALIZED = 8,
-  /*
-   * 响应解密用（AES_GCM_Response_data）
-   */
   SIGNATURES__SIGNATURE_TYPE__SIGNATURE_TYPE_AES_GCM_RESPONSE = 9
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(SIGNATURES__SIGNATURE_TYPE)
 } Signatures__SignatureType;
@@ -118,17 +64,11 @@ typedef enum {
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(SIGNATURES__KEY_IDENTITY__IDENTITY_TYPE__CASE)
 } Signatures__KeyIdentity__IdentityTypeCase;
 
-/*
- * 签名者身份：公钥（65 字节未压缩点）或 handle
- */
 struct  Signatures__KeyIdentity
 {
   ProtobufCMessage base;
   Signatures__KeyIdentity__IdentityTypeCase identity_type_case;
   union {
-    /*
-     * ENCODE_PUBLIC(C)：0x04 || x(32) || y(32)
-     */
     ProtobufCBinaryData public_key;
     uint32_t handle;
   };
@@ -138,32 +78,13 @@ struct  Signatures__KeyIdentity
 , SIGNATURES__KEY_IDENTITY__IDENTITY_TYPE__NOT_SET, { {0} } }
 
 
-/*
- * AES-GCM 个性化签名数据：请求加密时随 RoutableMessage.signature_data 发送
- * 与元数据 M 一起用于 AAD = SHA256(M)，加密 P 得到 ciphertext 与 tag
- */
 struct  Signatures__AESGCMPersonalizedSignatureData
 {
   ProtobufCMessage base;
-  /*
-   * 来自 session_info.epoch
-   */
   ProtobufCBinaryData epoch;
-  /*
-   * 12 字节随机 IV
-   */
   ProtobufCBinaryData nonce;
-  /*
-   * 单调递增，同 epoch 内不可重复
-   */
   uint32_t counter;
-  /*
-   * 域时钟下的过期时间（秒）
-   */
   uint32_t expires_at;
-  /*
-   * 16 字节 GCM 认证标签
-   */
   ProtobufCBinaryData tag;
 };
 #define SIGNATURES__AES__GCM__PERSONALIZED__SIGNATURE__DATA__INIT \
@@ -171,23 +92,11 @@ struct  Signatures__AESGCMPersonalizedSignatureData
 , {0,NULL}, {0,NULL}, 0, 0, {0,NULL} }
 
 
-/*
- * AES-GCM 响应签名数据：车辆在加密响应中返回，用于客户端解密
- */
 struct  Signatures__AESGCMResponseSignatureData
 {
   ProtobufCMessage base;
-  /*
-   * 12 字节
-   */
   ProtobufCBinaryData nonce;
-  /*
-   * 响应计数器
-   */
   uint32_t counter;
-  /*
-   * 16 字节 GCM 标签
-   */
   ProtobufCBinaryData tag;
 };
 #define SIGNATURES__AES__GCM__RESPONSE__SIGNATURE__DATA__INIT \
@@ -227,24 +136,15 @@ typedef enum {
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(SIGNATURES__SIGNATURE_DATA__SIG_TYPE__CASE)
 } Signatures__SignatureData__SigTypeCase;
 
-/*
- * 签名数据：oneof 选择 HMAC 或 AES-GCM 请求/响应
- */
 struct  Signatures__SignatureData
 {
   ProtobufCMessage base;
-  /*
-   * 客户端公钥
-   */
   Signatures__KeyIdentity *signer_identity;
   Signatures__SignatureData__SigTypeCase sig_type_case;
   union {
     Signatures__AESGCMPersonalizedSignatureData *aes_gcm_personalized_data;
     Signatures__AESGCMResponseSignatureData *aes_gcm_response_data;
     Signatures__HMACPersonalizedSignatureData *hmac_personalized_data;
-    /*
-     * 握手响应完整性校验
-     */
     Signatures__HMACSignatureData *session_info_tag;
   };
 };
@@ -263,28 +163,12 @@ struct  Signatures__GetSessionInfoRequest
 , NULL }
 
 
-/*
- * 会话信息：握手响应中车辆返回，用于后续命令的元数据与密钥派生
- * 见 protocol.md "Response" 与 "Key Agreement"
- */
 struct  Signatures__SessionInfo
 {
   ProtobufCMessage base;
-  /*
-   * 防重放计数器，后续命令需递增
-   */
   uint32_t counter;
-  /*
-   * 车辆公钥 V，用于 ECDH 得到 K
-   */
   ProtobufCBinaryData publickey;
-  /*
-   * 域当前 epoch_id
-   */
   ProtobufCBinaryData epoch;
-  /*
-   * 域时钟（秒），用于计算 expires_at
-   */
   uint32_t clock_time;
   Signatures__SessionInfoStatus status;
   uint32_t handle;

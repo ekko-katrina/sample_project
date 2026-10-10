@@ -1,5 +1,11 @@
 # BLE VIN 修订实现与联调
 
+2026-10-10 官方迁移：固件 `1.0.7`，基准官方 `vehicle-command a4b43c1`（2026-09-25）。基础 proto 同步官方，修正 VCSEC CommandStatus 子字段号；连接采用实际 CCCD 发现、Indication 和有响应写入。会话新增请求关联及 HMAC 验证，回复支持明文兼容、GCM 验证和防重放；多帧接收使用队列。控制接口递增计数器并等待终结回复，超时结果未确认不自动补发。App 帧不变，成功条件增加 configured/paired 检查。
+
+驾驶数据保留字段存在性和时间戳，检查 ActionStatus；重复或倒退时间戳不能刷新有效期。C2/C4 取消和停止持久化继续保留。详见 `components/tesla_ble/OFFICIAL_PROTOCOL.md`。
+
+迁移软件验证：实际 C 协议 + 独立 Python 加密车辆端，55 项断言通过；App 15 项回归通过。ESP-IDF 5.5.4 完整编译通过，生成 `build/sample_project.bin`，版本 1.0.7；以上仅为软件验证，尚未完成实车验收。
+
 2026-10-10 停止连接扩展：固件 `1.0.6` 新增 C4 停止指令，stage=09 正在停止、stage=08 已停止。App 可在连接过程中点击“停止连接”；固件取消旧操作、断开车辆并清理会话，保留 VIN/钥匙/paired，持久化 `auto_connect=0`。手机重连、C0 查询和设备重启均不恢复自动重连，新的有效 C2 保存 `auto_connect=1` 后恢复。存储失败返回 stage=08/error=03，本次运行仍停止。
 
 停止扩展软件验证：App 15 项回归测试；ESP-IDF 5.5.4 完整编译。实车停止、重启后保持停止和恢复连接仍待验证。

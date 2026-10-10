@@ -232,6 +232,96 @@ void   vcsec__public_key__free_unpacked
   assert(message->base.descriptor == &vcsec__public_key__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
+void   vcsec__whitelist_info__init
+                     (VCSEC__WhitelistInfo         *message)
+{
+  static const VCSEC__WhitelistInfo init_value = VCSEC__WHITELIST_INFO__INIT;
+  *message = init_value;
+}
+size_t vcsec__whitelist_info__get_packed_size
+                     (const VCSEC__WhitelistInfo *message)
+{
+  assert(message->base.descriptor == &vcsec__whitelist_info__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t vcsec__whitelist_info__pack
+                     (const VCSEC__WhitelistInfo *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &vcsec__whitelist_info__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t vcsec__whitelist_info__pack_to_buffer
+                     (const VCSEC__WhitelistInfo *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &vcsec__whitelist_info__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+VCSEC__WhitelistInfo *
+       vcsec__whitelist_info__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (VCSEC__WhitelistInfo *)
+     protobuf_c_message_unpack (&vcsec__whitelist_info__descriptor,
+                                allocator, len, data);
+}
+void   vcsec__whitelist_info__free_unpacked
+                     (VCSEC__WhitelistInfo *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &vcsec__whitelist_info__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   vcsec__whitelist_entry_info__init
+                     (VCSEC__WhitelistEntryInfo         *message)
+{
+  static const VCSEC__WhitelistEntryInfo init_value = VCSEC__WHITELIST_ENTRY_INFO__INIT;
+  *message = init_value;
+}
+size_t vcsec__whitelist_entry_info__get_packed_size
+                     (const VCSEC__WhitelistEntryInfo *message)
+{
+  assert(message->base.descriptor == &vcsec__whitelist_entry_info__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t vcsec__whitelist_entry_info__pack
+                     (const VCSEC__WhitelistEntryInfo *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &vcsec__whitelist_entry_info__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t vcsec__whitelist_entry_info__pack_to_buffer
+                     (const VCSEC__WhitelistEntryInfo *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &vcsec__whitelist_entry_info__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+VCSEC__WhitelistEntryInfo *
+       vcsec__whitelist_entry_info__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (VCSEC__WhitelistEntryInfo *)
+     protobuf_c_message_unpack (&vcsec__whitelist_entry_info__descriptor,
+                                allocator, len, data);
+}
+void   vcsec__whitelist_entry_info__free_unpacked
+                     (VCSEC__WhitelistEntryInfo *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &vcsec__whitelist_entry_info__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
 void   vcsec__information_request__init
                      (VCSEC__InformationRequest         *message)
 {
@@ -275,6 +365,51 @@ void   vcsec__information_request__free_unpacked
   if(!message)
     return;
   assert(message->base.descriptor == &vcsec__information_request__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   vcsec__closure_move_request__init
+                     (VCSEC__ClosureMoveRequest         *message)
+{
+  static const VCSEC__ClosureMoveRequest init_value = VCSEC__CLOSURE_MOVE_REQUEST__INIT;
+  *message = init_value;
+}
+size_t vcsec__closure_move_request__get_packed_size
+                     (const VCSEC__ClosureMoveRequest *message)
+{
+  assert(message->base.descriptor == &vcsec__closure_move_request__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t vcsec__closure_move_request__pack
+                     (const VCSEC__ClosureMoveRequest *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &vcsec__closure_move_request__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t vcsec__closure_move_request__pack_to_buffer
+                     (const VCSEC__ClosureMoveRequest *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &vcsec__closure_move_request__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+VCSEC__ClosureMoveRequest *
+       vcsec__closure_move_request__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (VCSEC__ClosureMoveRequest *)
+     protobuf_c_message_unpack (&vcsec__closure_move_request__descriptor,
+                                allocator, len, data);
+}
+void   vcsec__closure_move_request__free_unpacked
+                     (VCSEC__ClosureMoveRequest *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &vcsec__closure_move_request__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   vcsec__permission_change__init
@@ -322,6 +457,51 @@ void   vcsec__permission_change__free_unpacked
   assert(message->base.descriptor == &vcsec__permission_change__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
+void   vcsec__replace_key__init
+                     (VCSEC__ReplaceKey         *message)
+{
+  static const VCSEC__ReplaceKey init_value = VCSEC__REPLACE_KEY__INIT;
+  *message = init_value;
+}
+size_t vcsec__replace_key__get_packed_size
+                     (const VCSEC__ReplaceKey *message)
+{
+  assert(message->base.descriptor == &vcsec__replace_key__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t vcsec__replace_key__pack
+                     (const VCSEC__ReplaceKey *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &vcsec__replace_key__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t vcsec__replace_key__pack_to_buffer
+                     (const VCSEC__ReplaceKey *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &vcsec__replace_key__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+VCSEC__ReplaceKey *
+       vcsec__replace_key__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (VCSEC__ReplaceKey *)
+     protobuf_c_message_unpack (&vcsec__replace_key__descriptor,
+                                allocator, len, data);
+}
+void   vcsec__replace_key__free_unpacked
+                     (VCSEC__ReplaceKey *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &vcsec__replace_key__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
 void   vcsec__whitelist_operation__init
                      (VCSEC__WhitelistOperation         *message)
 {
@@ -365,141 +545,6 @@ void   vcsec__whitelist_operation__free_unpacked
   if(!message)
     return;
   assert(message->base.descriptor == &vcsec__whitelist_operation__descriptor);
-  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
-}
-void   vcsec__unsigned_message__init
-                     (VCSEC__UnsignedMessage         *message)
-{
-  static const VCSEC__UnsignedMessage init_value = VCSEC__UNSIGNED_MESSAGE__INIT;
-  *message = init_value;
-}
-size_t vcsec__unsigned_message__get_packed_size
-                     (const VCSEC__UnsignedMessage *message)
-{
-  assert(message->base.descriptor == &vcsec__unsigned_message__descriptor);
-  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
-}
-size_t vcsec__unsigned_message__pack
-                     (const VCSEC__UnsignedMessage *message,
-                      uint8_t       *out)
-{
-  assert(message->base.descriptor == &vcsec__unsigned_message__descriptor);
-  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
-}
-size_t vcsec__unsigned_message__pack_to_buffer
-                     (const VCSEC__UnsignedMessage *message,
-                      ProtobufCBuffer *buffer)
-{
-  assert(message->base.descriptor == &vcsec__unsigned_message__descriptor);
-  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
-}
-VCSEC__UnsignedMessage *
-       vcsec__unsigned_message__unpack
-                     (ProtobufCAllocator  *allocator,
-                      size_t               len,
-                      const uint8_t       *data)
-{
-  return (VCSEC__UnsignedMessage *)
-     protobuf_c_message_unpack (&vcsec__unsigned_message__descriptor,
-                                allocator, len, data);
-}
-void   vcsec__unsigned_message__free_unpacked
-                     (VCSEC__UnsignedMessage *message,
-                      ProtobufCAllocator *allocator)
-{
-  if(!message)
-    return;
-  assert(message->base.descriptor == &vcsec__unsigned_message__descriptor);
-  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
-}
-void   vcsec__closure_statuses__init
-                     (VCSEC__ClosureStatuses         *message)
-{
-  static const VCSEC__ClosureStatuses init_value = VCSEC__CLOSURE_STATUSES__INIT;
-  *message = init_value;
-}
-size_t vcsec__closure_statuses__get_packed_size
-                     (const VCSEC__ClosureStatuses *message)
-{
-  assert(message->base.descriptor == &vcsec__closure_statuses__descriptor);
-  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
-}
-size_t vcsec__closure_statuses__pack
-                     (const VCSEC__ClosureStatuses *message,
-                      uint8_t       *out)
-{
-  assert(message->base.descriptor == &vcsec__closure_statuses__descriptor);
-  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
-}
-size_t vcsec__closure_statuses__pack_to_buffer
-                     (const VCSEC__ClosureStatuses *message,
-                      ProtobufCBuffer *buffer)
-{
-  assert(message->base.descriptor == &vcsec__closure_statuses__descriptor);
-  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
-}
-VCSEC__ClosureStatuses *
-       vcsec__closure_statuses__unpack
-                     (ProtobufCAllocator  *allocator,
-                      size_t               len,
-                      const uint8_t       *data)
-{
-  return (VCSEC__ClosureStatuses *)
-     protobuf_c_message_unpack (&vcsec__closure_statuses__descriptor,
-                                allocator, len, data);
-}
-void   vcsec__closure_statuses__free_unpacked
-                     (VCSEC__ClosureStatuses *message,
-                      ProtobufCAllocator *allocator)
-{
-  if(!message)
-    return;
-  assert(message->base.descriptor == &vcsec__closure_statuses__descriptor);
-  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
-}
-void   vcsec__vehicle_status__init
-                     (VCSEC__VehicleStatus         *message)
-{
-  static const VCSEC__VehicleStatus init_value = VCSEC__VEHICLE_STATUS__INIT;
-  *message = init_value;
-}
-size_t vcsec__vehicle_status__get_packed_size
-                     (const VCSEC__VehicleStatus *message)
-{
-  assert(message->base.descriptor == &vcsec__vehicle_status__descriptor);
-  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
-}
-size_t vcsec__vehicle_status__pack
-                     (const VCSEC__VehicleStatus *message,
-                      uint8_t       *out)
-{
-  assert(message->base.descriptor == &vcsec__vehicle_status__descriptor);
-  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
-}
-size_t vcsec__vehicle_status__pack_to_buffer
-                     (const VCSEC__VehicleStatus *message,
-                      ProtobufCBuffer *buffer)
-{
-  assert(message->base.descriptor == &vcsec__vehicle_status__descriptor);
-  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
-}
-VCSEC__VehicleStatus *
-       vcsec__vehicle_status__unpack
-                     (ProtobufCAllocator  *allocator,
-                      size_t               len,
-                      const uint8_t       *data)
-{
-  return (VCSEC__VehicleStatus *)
-     protobuf_c_message_unpack (&vcsec__vehicle_status__descriptor,
-                                allocator, len, data);
-}
-void   vcsec__vehicle_status__free_unpacked
-                     (VCSEC__VehicleStatus *message,
-                      ProtobufCAllocator *allocator)
-{
-  if(!message)
-    return;
-  assert(message->base.descriptor == &vcsec__vehicle_status__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   vcsec__whitelist_operation_status__init
@@ -635,6 +680,186 @@ void   vcsec__command_status__free_unpacked
   if(!message)
     return;
   assert(message->base.descriptor == &vcsec__command_status__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   vcsec__unsigned_message__init
+                     (VCSEC__UnsignedMessage         *message)
+{
+  static const VCSEC__UnsignedMessage init_value = VCSEC__UNSIGNED_MESSAGE__INIT;
+  *message = init_value;
+}
+size_t vcsec__unsigned_message__get_packed_size
+                     (const VCSEC__UnsignedMessage *message)
+{
+  assert(message->base.descriptor == &vcsec__unsigned_message__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t vcsec__unsigned_message__pack
+                     (const VCSEC__UnsignedMessage *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &vcsec__unsigned_message__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t vcsec__unsigned_message__pack_to_buffer
+                     (const VCSEC__UnsignedMessage *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &vcsec__unsigned_message__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+VCSEC__UnsignedMessage *
+       vcsec__unsigned_message__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (VCSEC__UnsignedMessage *)
+     protobuf_c_message_unpack (&vcsec__unsigned_message__descriptor,
+                                allocator, len, data);
+}
+void   vcsec__unsigned_message__free_unpacked
+                     (VCSEC__UnsignedMessage *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &vcsec__unsigned_message__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   vcsec__closure_statuses__init
+                     (VCSEC__ClosureStatuses         *message)
+{
+  static const VCSEC__ClosureStatuses init_value = VCSEC__CLOSURE_STATUSES__INIT;
+  *message = init_value;
+}
+size_t vcsec__closure_statuses__get_packed_size
+                     (const VCSEC__ClosureStatuses *message)
+{
+  assert(message->base.descriptor == &vcsec__closure_statuses__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t vcsec__closure_statuses__pack
+                     (const VCSEC__ClosureStatuses *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &vcsec__closure_statuses__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t vcsec__closure_statuses__pack_to_buffer
+                     (const VCSEC__ClosureStatuses *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &vcsec__closure_statuses__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+VCSEC__ClosureStatuses *
+       vcsec__closure_statuses__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (VCSEC__ClosureStatuses *)
+     protobuf_c_message_unpack (&vcsec__closure_statuses__descriptor,
+                                allocator, len, data);
+}
+void   vcsec__closure_statuses__free_unpacked
+                     (VCSEC__ClosureStatuses *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &vcsec__closure_statuses__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   vcsec__detailed_closure_status__init
+                     (VCSEC__DetailedClosureStatus         *message)
+{
+  static const VCSEC__DetailedClosureStatus init_value = VCSEC__DETAILED_CLOSURE_STATUS__INIT;
+  *message = init_value;
+}
+size_t vcsec__detailed_closure_status__get_packed_size
+                     (const VCSEC__DetailedClosureStatus *message)
+{
+  assert(message->base.descriptor == &vcsec__detailed_closure_status__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t vcsec__detailed_closure_status__pack
+                     (const VCSEC__DetailedClosureStatus *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &vcsec__detailed_closure_status__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t vcsec__detailed_closure_status__pack_to_buffer
+                     (const VCSEC__DetailedClosureStatus *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &vcsec__detailed_closure_status__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+VCSEC__DetailedClosureStatus *
+       vcsec__detailed_closure_status__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (VCSEC__DetailedClosureStatus *)
+     protobuf_c_message_unpack (&vcsec__detailed_closure_status__descriptor,
+                                allocator, len, data);
+}
+void   vcsec__detailed_closure_status__free_unpacked
+                     (VCSEC__DetailedClosureStatus *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &vcsec__detailed_closure_status__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   vcsec__vehicle_status__init
+                     (VCSEC__VehicleStatus         *message)
+{
+  static const VCSEC__VehicleStatus init_value = VCSEC__VEHICLE_STATUS__INIT;
+  *message = init_value;
+}
+size_t vcsec__vehicle_status__get_packed_size
+                     (const VCSEC__VehicleStatus *message)
+{
+  assert(message->base.descriptor == &vcsec__vehicle_status__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t vcsec__vehicle_status__pack
+                     (const VCSEC__VehicleStatus *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &vcsec__vehicle_status__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t vcsec__vehicle_status__pack_to_buffer
+                     (const VCSEC__VehicleStatus *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &vcsec__vehicle_status__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+VCSEC__VehicleStatus *
+       vcsec__vehicle_status__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (VCSEC__VehicleStatus *)
+     protobuf_c_message_unpack (&vcsec__vehicle_status__descriptor,
+                                allocator, len, data);
+}
+void   vcsec__vehicle_status__free_unpacked
+                     (VCSEC__VehicleStatus *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &vcsec__vehicle_status__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   vcsec__from_vcsecmessage__init
@@ -885,6 +1110,162 @@ const ProtobufCMessageDescriptor vcsec__public_key__descriptor =
   (ProtobufCMessageInit) vcsec__public_key__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
+static const ProtobufCFieldDescriptor vcsec__whitelist_info__field_descriptors[3] =
+{
+  {
+    "numberOfEntries",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_UINT32,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__WhitelistInfo, numberofentries),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "whitelistEntries",
+    2,
+    PROTOBUF_C_LABEL_REPEATED,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(VCSEC__WhitelistInfo, n_whitelistentries),
+    offsetof(VCSEC__WhitelistInfo, whitelistentries),
+    &vcsec__key_identifier__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "slotMask",
+    3,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_UINT32,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__WhitelistInfo, slotmask),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned vcsec__whitelist_info__field_indices_by_name[] = {
+  0,   /* field[0] = numberOfEntries */
+  2,   /* field[2] = slotMask */
+  1,   /* field[1] = whitelistEntries */
+};
+static const ProtobufCIntRange vcsec__whitelist_info__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 3 }
+};
+const ProtobufCMessageDescriptor vcsec__whitelist_info__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "VCSEC.WhitelistInfo",
+  "WhitelistInfo",
+  "VCSEC__WhitelistInfo",
+  "VCSEC",
+  sizeof(VCSEC__WhitelistInfo),
+  3,
+  vcsec__whitelist_info__field_descriptors,
+  vcsec__whitelist_info__field_indices_by_name,
+  1,  vcsec__whitelist_info__number_ranges,
+  (ProtobufCMessageInit) vcsec__whitelist_info__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor vcsec__whitelist_entry_info__field_descriptors[5] =
+{
+  {
+    "keyId",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__WhitelistEntryInfo, keyid),
+    &vcsec__key_identifier__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "publicKey",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__WhitelistEntryInfo, publickey),
+    &vcsec__public_key__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "metadataForKey",
+    4,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__WhitelistEntryInfo, metadataforkey),
+    &vcsec__key_metadata__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "slot",
+    6,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_UINT32,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__WhitelistEntryInfo, slot),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "keyRole",
+    7,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__WhitelistEntryInfo, keyrole),
+    &keys__role__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned vcsec__whitelist_entry_info__field_indices_by_name[] = {
+  0,   /* field[0] = keyId */
+  4,   /* field[4] = keyRole */
+  2,   /* field[2] = metadataForKey */
+  1,   /* field[1] = publicKey */
+  3,   /* field[3] = slot */
+};
+static const ProtobufCIntRange vcsec__whitelist_entry_info__number_ranges[3 + 1] =
+{
+  { 1, 0 },
+  { 4, 2 },
+  { 6, 3 },
+  { 0, 5 }
+};
+const ProtobufCMessageDescriptor vcsec__whitelist_entry_info__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "VCSEC.WhitelistEntryInfo",
+  "WhitelistEntryInfo",
+  "VCSEC__WhitelistEntryInfo",
+  "VCSEC",
+  sizeof(VCSEC__WhitelistEntryInfo),
+  5,
+  vcsec__whitelist_entry_info__field_descriptors,
+  vcsec__whitelist_entry_info__field_indices_by_name,
+  3,  vcsec__whitelist_entry_info__number_ranges,
+  (ProtobufCMessageInit) vcsec__whitelist_entry_info__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
 static const ProtobufCFieldDescriptor vcsec__information_request__field_descriptors[4] =
 {
   {
@@ -962,6 +1343,135 @@ const ProtobufCMessageDescriptor vcsec__information_request__descriptor =
   (ProtobufCMessageInit) vcsec__information_request__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
+static const ProtobufCFieldDescriptor vcsec__closure_move_request__field_descriptors[8] =
+{
+  {
+    "frontDriverDoor",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__ClosureMoveRequest, frontdriverdoor),
+    &vcsec__closure_move_type__e__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "frontPassengerDoor",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__ClosureMoveRequest, frontpassengerdoor),
+    &vcsec__closure_move_type__e__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "rearDriverDoor",
+    3,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__ClosureMoveRequest, reardriverdoor),
+    &vcsec__closure_move_type__e__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "rearPassengerDoor",
+    4,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__ClosureMoveRequest, rearpassengerdoor),
+    &vcsec__closure_move_type__e__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "rearTrunk",
+    5,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__ClosureMoveRequest, reartrunk),
+    &vcsec__closure_move_type__e__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "frontTrunk",
+    6,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__ClosureMoveRequest, fronttrunk),
+    &vcsec__closure_move_type__e__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "chargePort",
+    7,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__ClosureMoveRequest, chargeport),
+    &vcsec__closure_move_type__e__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "tonneau",
+    8,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__ClosureMoveRequest, tonneau),
+    &vcsec__closure_move_type__e__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned vcsec__closure_move_request__field_indices_by_name[] = {
+  6,   /* field[6] = chargePort */
+  0,   /* field[0] = frontDriverDoor */
+  1,   /* field[1] = frontPassengerDoor */
+  5,   /* field[5] = frontTrunk */
+  2,   /* field[2] = rearDriverDoor */
+  3,   /* field[3] = rearPassengerDoor */
+  4,   /* field[4] = rearTrunk */
+  7,   /* field[7] = tonneau */
+};
+static const ProtobufCIntRange vcsec__closure_move_request__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 8 }
+};
+const ProtobufCMessageDescriptor vcsec__closure_move_request__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "VCSEC.ClosureMoveRequest",
+  "ClosureMoveRequest",
+  "VCSEC__ClosureMoveRequest",
+  "VCSEC",
+  sizeof(VCSEC__ClosureMoveRequest),
+  8,
+  vcsec__closure_move_request__field_descriptors,
+  vcsec__closure_move_request__field_indices_by_name,
+  1,  vcsec__closure_move_request__number_ranges,
+  (ProtobufCMessageInit) vcsec__closure_move_request__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
 static const ProtobufCFieldDescriptor vcsec__permission_change__field_descriptors[3] =
 {
   {
@@ -1027,7 +1537,97 @@ const ProtobufCMessageDescriptor vcsec__permission_change__descriptor =
   (ProtobufCMessageInit) vcsec__permission_change__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor vcsec__whitelist_operation__field_descriptors[10] =
+static const ProtobufCFieldDescriptor vcsec__replace_key__field_descriptors[5] =
+{
+  {
+    "publicKeyToReplace",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(VCSEC__ReplaceKey, key_to_replace_case),
+    offsetof(VCSEC__ReplaceKey, publickeytoreplace),
+    &vcsec__public_key__descriptor,
+    NULL,
+    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "slotToReplace",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_UINT32,
+    offsetof(VCSEC__ReplaceKey, key_to_replace_case),
+    offsetof(VCSEC__ReplaceKey, slottoreplace),
+    NULL,
+    NULL,
+    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "keyToAdd",
+    3,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__ReplaceKey, keytoadd),
+    &vcsec__public_key__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "keyRole",
+    4,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__ReplaceKey, keyrole),
+    &keys__role__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "impermanent",
+    5,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_BOOL,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__ReplaceKey, impermanent),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned vcsec__replace_key__field_indices_by_name[] = {
+  4,   /* field[4] = impermanent */
+  3,   /* field[3] = keyRole */
+  2,   /* field[2] = keyToAdd */
+  0,   /* field[0] = publicKeyToReplace */
+  1,   /* field[1] = slotToReplace */
+};
+static const ProtobufCIntRange vcsec__replace_key__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 5 }
+};
+const ProtobufCMessageDescriptor vcsec__replace_key__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "VCSEC.ReplaceKey",
+  "ReplaceKey",
+  "VCSEC__ReplaceKey",
+  "VCSEC",
+  sizeof(VCSEC__ReplaceKey),
+  5,
+  vcsec__replace_key__field_descriptors,
+  vcsec__replace_key__field_indices_by_name,
+  1,  vcsec__replace_key__number_ranges,
+  (ProtobufCMessageInit) vcsec__replace_key__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor vcsec__whitelist_operation__field_descriptors[11] =
 {
   {
     "addPublicKeyToWhitelist",
@@ -1149,6 +1749,18 @@ static const ProtobufCFieldDescriptor vcsec__whitelist_operation__field_descript
     PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "replaceKey",
+    17,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(VCSEC__WhitelistOperation, sub_message_case),
+    offsetof(VCSEC__WhitelistOperation, replacekey),
+    &vcsec__replace_key__descriptor,
+    NULL,
+    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned vcsec__whitelist_operation__field_indices_by_name[] = {
   7,   /* field[7] = addImpermanentKey */
@@ -1160,13 +1772,14 @@ static const unsigned vcsec__whitelist_operation__field_indices_by_name[] = {
   9,   /* field[9] = removeAllImpermanentKeys */
   3,   /* field[3] = removePermissionsFromPublicKey */
   1,   /* field[1] = removePublicKeyFromWhitelist */
+  10,   /* field[10] = replaceKey */
   6,   /* field[6] = updateKeyAndPermissions */
 };
 static const ProtobufCIntRange vcsec__whitelist_operation__number_ranges[2 + 1] =
 {
   { 1, 0 },
   { 16, 9 },
-  { 0, 10 }
+  { 0, 11 }
 };
 const ProtobufCMessageDescriptor vcsec__whitelist_operation__descriptor =
 {
@@ -1176,14 +1789,193 @@ const ProtobufCMessageDescriptor vcsec__whitelist_operation__descriptor =
   "VCSEC__WhitelistOperation",
   "VCSEC",
   sizeof(VCSEC__WhitelistOperation),
-  10,
+  11,
   vcsec__whitelist_operation__field_descriptors,
   vcsec__whitelist_operation__field_indices_by_name,
   2,  vcsec__whitelist_operation__number_ranges,
   (ProtobufCMessageInit) vcsec__whitelist_operation__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor vcsec__unsigned_message__field_descriptors[3] =
+static const ProtobufCFieldDescriptor vcsec__whitelist_operation_status__field_descriptors[3] =
+{
+  {
+    "whitelistOperationInformation",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__WhitelistOperationStatus, whitelistoperationinformation),
+    &vcsec__whitelist_operation_information__e__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "signerOfOperation",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__WhitelistOperationStatus, signerofoperation),
+    &vcsec__key_identifier__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "operationStatus",
+    3,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__WhitelistOperationStatus, operationstatus),
+    &vcsec__operation_status__e__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned vcsec__whitelist_operation_status__field_indices_by_name[] = {
+  2,   /* field[2] = operationStatus */
+  1,   /* field[1] = signerOfOperation */
+  0,   /* field[0] = whitelistOperationInformation */
+};
+static const ProtobufCIntRange vcsec__whitelist_operation_status__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 3 }
+};
+const ProtobufCMessageDescriptor vcsec__whitelist_operation_status__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "VCSEC.WhitelistOperation_status",
+  "WhitelistOperationStatus",
+  "VCSEC__WhitelistOperationStatus",
+  "VCSEC",
+  sizeof(VCSEC__WhitelistOperationStatus),
+  3,
+  vcsec__whitelist_operation_status__field_descriptors,
+  vcsec__whitelist_operation_status__field_indices_by_name,
+  1,  vcsec__whitelist_operation_status__number_ranges,
+  (ProtobufCMessageInit) vcsec__whitelist_operation_status__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor vcsec__signed_message_status__field_descriptors[2] =
+{
+  {
+    "counter",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_UINT32,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__SignedMessageStatus, counter),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "signedMessageInformation",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__SignedMessageStatus, signedmessageinformation),
+    &vcsec__signed_message_information__e__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned vcsec__signed_message_status__field_indices_by_name[] = {
+  0,   /* field[0] = counter */
+  1,   /* field[1] = signedMessageInformation */
+};
+static const ProtobufCIntRange vcsec__signed_message_status__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 2 }
+};
+const ProtobufCMessageDescriptor vcsec__signed_message_status__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "VCSEC.SignedMessage_status",
+  "SignedMessageStatus",
+  "VCSEC__SignedMessageStatus",
+  "VCSEC",
+  sizeof(VCSEC__SignedMessageStatus),
+  2,
+  vcsec__signed_message_status__field_descriptors,
+  vcsec__signed_message_status__field_indices_by_name,
+  1,  vcsec__signed_message_status__number_ranges,
+  (ProtobufCMessageInit) vcsec__signed_message_status__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor vcsec__command_status__field_descriptors[3] =
+{
+  {
+    "operationStatus",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__CommandStatus, operationstatus),
+    &vcsec__operation_status__e__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "signedMessageStatus",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(VCSEC__CommandStatus, sub_message_case),
+    offsetof(VCSEC__CommandStatus, signedmessagestatus),
+    &vcsec__signed_message_status__descriptor,
+    NULL,
+    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "whitelistOperationStatus",
+    3,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(VCSEC__CommandStatus, sub_message_case),
+    offsetof(VCSEC__CommandStatus, whitelistoperationstatus),
+    &vcsec__whitelist_operation_status__descriptor,
+    NULL,
+    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned vcsec__command_status__field_indices_by_name[] = {
+  0,   /* field[0] = operationStatus */
+  1,   /* field[1] = signedMessageStatus */
+  2,   /* field[2] = whitelistOperationStatus */
+};
+static const ProtobufCIntRange vcsec__command_status__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 3 }
+};
+const ProtobufCMessageDescriptor vcsec__command_status__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "VCSEC.CommandStatus",
+  "CommandStatus",
+  "VCSEC__CommandStatus",
+  "VCSEC",
+  sizeof(VCSEC__CommandStatus),
+  3,
+  vcsec__command_status__field_descriptors,
+  vcsec__command_status__field_indices_by_name,
+  1,  vcsec__command_status__number_ranges,
+  (ProtobufCMessageInit) vcsec__command_status__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor vcsec__unsigned_message__field_descriptors[4] =
 {
   {
     "InformationRequest",
@@ -1210,6 +2002,18 @@ static const ProtobufCFieldDescriptor vcsec__unsigned_message__field_descriptors
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
+    "closureMoveRequest",
+    4,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(VCSEC__UnsignedMessage, sub_message_case),
+    offsetof(VCSEC__UnsignedMessage, closuremoverequest),
+    &vcsec__closure_move_request__descriptor,
+    NULL,
+    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
     "WhitelistOperation",
     16,
     PROTOBUF_C_LABEL_NONE,
@@ -1225,13 +2029,15 @@ static const ProtobufCFieldDescriptor vcsec__unsigned_message__field_descriptors
 static const unsigned vcsec__unsigned_message__field_indices_by_name[] = {
   0,   /* field[0] = InformationRequest */
   1,   /* field[1] = RKEAction */
-  2,   /* field[2] = WhitelistOperation */
+  3,   /* field[3] = WhitelistOperation */
+  2,   /* field[2] = closureMoveRequest */
 };
-static const ProtobufCIntRange vcsec__unsigned_message__number_ranges[2 + 1] =
+static const ProtobufCIntRange vcsec__unsigned_message__number_ranges[3 + 1] =
 {
   { 1, 0 },
-  { 16, 2 },
-  { 0, 3 }
+  { 4, 2 },
+  { 16, 3 },
+  { 0, 4 }
 };
 const ProtobufCMessageDescriptor vcsec__unsigned_message__descriptor =
 {
@@ -1241,10 +2047,10 @@ const ProtobufCMessageDescriptor vcsec__unsigned_message__descriptor =
   "VCSEC__UnsignedMessage",
   "VCSEC",
   sizeof(VCSEC__UnsignedMessage),
-  3,
+  4,
   vcsec__unsigned_message__field_descriptors,
   vcsec__unsigned_message__field_indices_by_name,
-  2,  vcsec__unsigned_message__number_ranges,
+  3,  vcsec__unsigned_message__number_ranges,
   (ProtobufCMessageInit) vcsec__unsigned_message__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
@@ -1377,7 +2183,45 @@ const ProtobufCMessageDescriptor vcsec__closure_statuses__descriptor =
   (ProtobufCMessageInit) vcsec__closure_statuses__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor vcsec__vehicle_status__field_descriptors[4] =
+static const ProtobufCFieldDescriptor vcsec__detailed_closure_status__field_descriptors[1] =
+{
+  {
+    "tonneauPercentOpen",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_UINT32,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__DetailedClosureStatus, tonneaupercentopen),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned vcsec__detailed_closure_status__field_indices_by_name[] = {
+  0,   /* field[0] = tonneauPercentOpen */
+};
+static const ProtobufCIntRange vcsec__detailed_closure_status__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 1 }
+};
+const ProtobufCMessageDescriptor vcsec__detailed_closure_status__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "VCSEC.DetailedClosureStatus",
+  "DetailedClosureStatus",
+  "VCSEC__DetailedClosureStatus",
+  "VCSEC",
+  sizeof(VCSEC__DetailedClosureStatus),
+  1,
+  vcsec__detailed_closure_status__field_descriptors,
+  vcsec__detailed_closure_status__field_indices_by_name,
+  1,  vcsec__detailed_closure_status__number_ranges,
+  (ProtobufCMessageInit) vcsec__detailed_closure_status__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor vcsec__vehicle_status__field_descriptors[5] =
 {
   {
     "closureStatuses",
@@ -1427,9 +2271,22 @@ static const ProtobufCFieldDescriptor vcsec__vehicle_status__field_descriptors[4
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "detailedClosureStatus",
+    5,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    0,   /* quantifier_offset */
+    offsetof(VCSEC__VehicleStatus, detailedclosurestatus),
+    &vcsec__detailed_closure_status__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned vcsec__vehicle_status__field_indices_by_name[] = {
   0,   /* field[0] = closureStatuses */
+  4,   /* field[4] = detailedClosureStatus */
   3,   /* field[3] = userPresence */
   1,   /* field[1] = vehicleLockState */
   2,   /* field[2] = vehicleSleepStatus */
@@ -1437,7 +2294,7 @@ static const unsigned vcsec__vehicle_status__field_indices_by_name[] = {
 static const ProtobufCIntRange vcsec__vehicle_status__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 4 }
+  { 0, 5 }
 };
 const ProtobufCMessageDescriptor vcsec__vehicle_status__descriptor =
 {
@@ -1447,194 +2304,14 @@ const ProtobufCMessageDescriptor vcsec__vehicle_status__descriptor =
   "VCSEC__VehicleStatus",
   "VCSEC",
   sizeof(VCSEC__VehicleStatus),
-  4,
+  5,
   vcsec__vehicle_status__field_descriptors,
   vcsec__vehicle_status__field_indices_by_name,
   1,  vcsec__vehicle_status__number_ranges,
   (ProtobufCMessageInit) vcsec__vehicle_status__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor vcsec__whitelist_operation_status__field_descriptors[3] =
-{
-  {
-    "whitelistOperationInformation",
-    1,
-    PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_UINT32,
-    0,   /* quantifier_offset */
-    offsetof(VCSEC__WhitelistOperationStatus, whitelistoperationinformation),
-    NULL,
-    NULL,
-    0,             /* flags */
-    0,NULL,NULL    /* reserved1,reserved2, etc */
-  },
-  {
-    "signerOfOperation",
-    2,
-    PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_UINT32,
-    0,   /* quantifier_offset */
-    offsetof(VCSEC__WhitelistOperationStatus, signerofoperation),
-    NULL,
-    NULL,
-    0,             /* flags */
-    0,NULL,NULL    /* reserved1,reserved2, etc */
-  },
-  {
-    "operationForKeyInWhitelist",
-    3,
-    PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_UINT32,
-    0,   /* quantifier_offset */
-    offsetof(VCSEC__WhitelistOperationStatus, operationforkeyinwhitelist),
-    NULL,
-    NULL,
-    0,             /* flags */
-    0,NULL,NULL    /* reserved1,reserved2, etc */
-  },
-};
-static const unsigned vcsec__whitelist_operation_status__field_indices_by_name[] = {
-  2,   /* field[2] = operationForKeyInWhitelist */
-  1,   /* field[1] = signerOfOperation */
-  0,   /* field[0] = whitelistOperationInformation */
-};
-static const ProtobufCIntRange vcsec__whitelist_operation_status__number_ranges[1 + 1] =
-{
-  { 1, 0 },
-  { 0, 3 }
-};
-const ProtobufCMessageDescriptor vcsec__whitelist_operation_status__descriptor =
-{
-  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
-  "VCSEC.WhitelistOperation_status",
-  "WhitelistOperationStatus",
-  "VCSEC__WhitelistOperationStatus",
-  "VCSEC",
-  sizeof(VCSEC__WhitelistOperationStatus),
-  3,
-  vcsec__whitelist_operation_status__field_descriptors,
-  vcsec__whitelist_operation_status__field_indices_by_name,
-  1,  vcsec__whitelist_operation_status__number_ranges,
-  (ProtobufCMessageInit) vcsec__whitelist_operation_status__init,
-  NULL,NULL,NULL    /* reserved[123] */
-};
-static const ProtobufCFieldDescriptor vcsec__signed_message_status__field_descriptors[2] =
-{
-  {
-    "counter",
-    1,
-    PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_UINT32,
-    0,   /* quantifier_offset */
-    offsetof(VCSEC__SignedMessageStatus, counter),
-    NULL,
-    NULL,
-    0,             /* flags */
-    0,NULL,NULL    /* reserved1,reserved2, etc */
-  },
-  {
-    "signedMessageFault",
-    2,
-    PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_UINT32,
-    0,   /* quantifier_offset */
-    offsetof(VCSEC__SignedMessageStatus, signedmessagefault),
-    NULL,
-    NULL,
-    0,             /* flags */
-    0,NULL,NULL    /* reserved1,reserved2, etc */
-  },
-};
-static const unsigned vcsec__signed_message_status__field_indices_by_name[] = {
-  0,   /* field[0] = counter */
-  1,   /* field[1] = signedMessageFault */
-};
-static const ProtobufCIntRange vcsec__signed_message_status__number_ranges[1 + 1] =
-{
-  { 1, 0 },
-  { 0, 2 }
-};
-const ProtobufCMessageDescriptor vcsec__signed_message_status__descriptor =
-{
-  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
-  "VCSEC.SignedMessage_status",
-  "SignedMessageStatus",
-  "VCSEC__SignedMessageStatus",
-  "VCSEC",
-  sizeof(VCSEC__SignedMessageStatus),
-  2,
-  vcsec__signed_message_status__field_descriptors,
-  vcsec__signed_message_status__field_indices_by_name,
-  1,  vcsec__signed_message_status__number_ranges,
-  (ProtobufCMessageInit) vcsec__signed_message_status__init,
-  NULL,NULL,NULL    /* reserved[123] */
-};
-static const ProtobufCFieldDescriptor vcsec__command_status__field_descriptors[3] =
-{
-  {
-    "operationStatus",
-    1,
-    PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_ENUM,
-    0,   /* quantifier_offset */
-    offsetof(VCSEC__CommandStatus, operationstatus),
-    &vcsec__operation_status__e__descriptor,
-    NULL,
-    0,             /* flags */
-    0,NULL,NULL    /* reserved1,reserved2, etc */
-  },
-  {
-    "whitelistOperationStatus",
-    5,
-    PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_MESSAGE,
-    offsetof(VCSEC__CommandStatus, sub_message_case),
-    offsetof(VCSEC__CommandStatus, whitelistoperationstatus),
-    &vcsec__whitelist_operation_status__descriptor,
-    NULL,
-    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
-    0,NULL,NULL    /* reserved1,reserved2, etc */
-  },
-  {
-    "signedMessageStatus",
-    6,
-    PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_MESSAGE,
-    offsetof(VCSEC__CommandStatus, sub_message_case),
-    offsetof(VCSEC__CommandStatus, signedmessagestatus),
-    &vcsec__signed_message_status__descriptor,
-    NULL,
-    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
-    0,NULL,NULL    /* reserved1,reserved2, etc */
-  },
-};
-static const unsigned vcsec__command_status__field_indices_by_name[] = {
-  0,   /* field[0] = operationStatus */
-  2,   /* field[2] = signedMessageStatus */
-  1,   /* field[1] = whitelistOperationStatus */
-};
-static const ProtobufCIntRange vcsec__command_status__number_ranges[2 + 1] =
-{
-  { 1, 0 },
-  { 5, 1 },
-  { 0, 3 }
-};
-const ProtobufCMessageDescriptor vcsec__command_status__descriptor =
-{
-  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
-  "VCSEC.CommandStatus",
-  "CommandStatus",
-  "VCSEC__CommandStatus",
-  "VCSEC",
-  sizeof(VCSEC__CommandStatus),
-  3,
-  vcsec__command_status__field_descriptors,
-  vcsec__command_status__field_indices_by_name,
-  2,  vcsec__command_status__number_ranges,
-  (ProtobufCMessageInit) vcsec__command_status__init,
-  NULL,NULL,NULL    /* reserved[123] */
-};
-static const ProtobufCFieldDescriptor vcsec__from_vcsecmessage__field_descriptors[3] =
+static const ProtobufCFieldDescriptor vcsec__from_vcsecmessage__field_descriptors[5] =
 {
   {
     "vehicleStatus",
@@ -1661,6 +2338,30 @@ static const ProtobufCFieldDescriptor vcsec__from_vcsecmessage__field_descriptor
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
+    "whitelistInfo",
+    16,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(VCSEC__FromVCSECMessage, sub_message_case),
+    offsetof(VCSEC__FromVCSECMessage, whitelistinfo),
+    &vcsec__whitelist_info__descriptor,
+    NULL,
+    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "whitelistEntryInfo",
+    17,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(VCSEC__FromVCSECMessage, sub_message_case),
+    offsetof(VCSEC__FromVCSECMessage, whitelistentryinfo),
+    &vcsec__whitelist_entry_info__descriptor,
+    NULL,
+    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
     "nominalError",
     46,
     PROTOBUF_C_LABEL_NONE,
@@ -1675,15 +2376,18 @@ static const ProtobufCFieldDescriptor vcsec__from_vcsecmessage__field_descriptor
 };
 static const unsigned vcsec__from_vcsecmessage__field_indices_by_name[] = {
   1,   /* field[1] = commandStatus */
-  2,   /* field[2] = nominalError */
+  4,   /* field[4] = nominalError */
   0,   /* field[0] = vehicleStatus */
+  3,   /* field[3] = whitelistEntryInfo */
+  2,   /* field[2] = whitelistInfo */
 };
-static const ProtobufCIntRange vcsec__from_vcsecmessage__number_ranges[3 + 1] =
+static const ProtobufCIntRange vcsec__from_vcsecmessage__number_ranges[4 + 1] =
 {
   { 1, 0 },
   { 4, 1 },
-  { 46, 2 },
-  { 0, 3 }
+  { 16, 2 },
+  { 46, 4 },
+  { 0, 5 }
 };
 const ProtobufCMessageDescriptor vcsec__from_vcsecmessage__descriptor =
 {
@@ -1693,10 +2397,10 @@ const ProtobufCMessageDescriptor vcsec__from_vcsecmessage__descriptor =
   "VCSEC__FromVCSECMessage",
   "VCSEC",
   sizeof(VCSEC__FromVCSECMessage),
-  3,
+  5,
   vcsec__from_vcsecmessage__field_descriptors,
   vcsec__from_vcsecmessage__field_indices_by_name,
-  3,  vcsec__from_vcsecmessage__number_ranges,
+  4,  vcsec__from_vcsecmessage__number_ranges,
   (ProtobufCMessageInit) vcsec__from_vcsecmessage__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
@@ -1824,6 +2528,216 @@ const ProtobufCEnumDescriptor vcsec__rkeaction__e__descriptor =
   vcsec__rkeaction__e__enum_values_by_name,
   3,
   vcsec__rkeaction__e__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+static const ProtobufCEnumValue vcsec__closure_move_type__e__enum_values_by_number[5] =
+{
+  { "CLOSURE_MOVE_TYPE_NONE", "VCSEC__CLOSURE_MOVE_TYPE__E__CLOSURE_MOVE_TYPE_NONE", 0 },
+  { "CLOSURE_MOVE_TYPE_MOVE", "VCSEC__CLOSURE_MOVE_TYPE__E__CLOSURE_MOVE_TYPE_MOVE", 1 },
+  { "CLOSURE_MOVE_TYPE_STOP", "VCSEC__CLOSURE_MOVE_TYPE__E__CLOSURE_MOVE_TYPE_STOP", 2 },
+  { "CLOSURE_MOVE_TYPE_OPEN", "VCSEC__CLOSURE_MOVE_TYPE__E__CLOSURE_MOVE_TYPE_OPEN", 3 },
+  { "CLOSURE_MOVE_TYPE_CLOSE", "VCSEC__CLOSURE_MOVE_TYPE__E__CLOSURE_MOVE_TYPE_CLOSE", 4 },
+};
+static const ProtobufCIntRange vcsec__closure_move_type__e__value_ranges[] = {
+{0, 0},{0, 5}
+};
+static const ProtobufCEnumValueIndex vcsec__closure_move_type__e__enum_values_by_name[5] =
+{
+  { "CLOSURE_MOVE_TYPE_CLOSE", 4 },
+  { "CLOSURE_MOVE_TYPE_MOVE", 1 },
+  { "CLOSURE_MOVE_TYPE_NONE", 0 },
+  { "CLOSURE_MOVE_TYPE_OPEN", 3 },
+  { "CLOSURE_MOVE_TYPE_STOP", 2 },
+};
+const ProtobufCEnumDescriptor vcsec__closure_move_type__e__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "VCSEC.ClosureMoveType_E",
+  "ClosureMoveType_E",
+  "VCSEC__ClosureMoveTypeE",
+  "VCSEC",
+  5,
+  vcsec__closure_move_type__e__enum_values_by_number,
+  5,
+  vcsec__closure_move_type__e__enum_values_by_name,
+  1,
+  vcsec__closure_move_type__e__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+static const ProtobufCEnumValue vcsec__operation_status__e__enum_values_by_number[3] =
+{
+  { "OPERATIONSTATUS_OK", "VCSEC__OPERATION_STATUS__E__OPERATIONSTATUS_OK", 0 },
+  { "OPERATIONSTATUS_WAIT", "VCSEC__OPERATION_STATUS__E__OPERATIONSTATUS_WAIT", 1 },
+  { "OPERATIONSTATUS_ERROR", "VCSEC__OPERATION_STATUS__E__OPERATIONSTATUS_ERROR", 2 },
+};
+static const ProtobufCIntRange vcsec__operation_status__e__value_ranges[] = {
+{0, 0},{0, 3}
+};
+static const ProtobufCEnumValueIndex vcsec__operation_status__e__enum_values_by_name[3] =
+{
+  { "OPERATIONSTATUS_ERROR", 2 },
+  { "OPERATIONSTATUS_OK", 0 },
+  { "OPERATIONSTATUS_WAIT", 1 },
+};
+const ProtobufCEnumDescriptor vcsec__operation_status__e__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "VCSEC.OperationStatus_E",
+  "OperationStatus_E",
+  "VCSEC__OperationStatusE",
+  "VCSEC",
+  3,
+  vcsec__operation_status__e__enum_values_by_number,
+  3,
+  vcsec__operation_status__e__enum_values_by_name,
+  1,
+  vcsec__operation_status__e__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+static const ProtobufCEnumValue vcsec__signed_message_information__e__enum_values_by_number[20] =
+{
+  { "SIGNEDMESSAGE_INFORMATION_NONE", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_NONE", 0 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_UNKNOWN", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_UNKNOWN", 1 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_NOT_ON_WHITELIST", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_NOT_ON_WHITELIST", 2 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_IV_SMALLER_THAN_EXPECTED", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_IV_SMALLER_THAN_EXPECTED", 3 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_INVALID_TOKEN", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_INVALID_TOKEN", 4 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_TOKEN_AND_COUNTER_INVALID", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_TOKEN_AND_COUNTER_INVALID", 5 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_AES_DECRYPT_AUTH", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_AES_DECRYPT_AUTH", 6 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_ECDSA_INPUT", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_ECDSA_INPUT", 7 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_ECDSA_SIGNATURE", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_ECDSA_SIGNATURE", 8 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_LOCAL_ENTITY_START", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_LOCAL_ENTITY_START", 9 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_LOCAL_ENTITY_RESULT", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_LOCAL_ENTITY_RESULT", 10 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_COULD_NOT_RETRIEVE_KEY", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_COULD_NOT_RETRIEVE_KEY", 11 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_COULD_NOT_RETRIEVE_TOKEN", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_COULD_NOT_RETRIEVE_TOKEN", 12 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_SIGNATURE_TOO_SHORT", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_SIGNATURE_TOO_SHORT", 13 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_TOKEN_IS_INCORRECT_LENGTH", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_TOKEN_IS_INCORRECT_LENGTH", 14 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_INCORRECT_EPOCH", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_INCORRECT_EPOCH", 15 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_IV_INCORRECT_LENGTH", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_IV_INCORRECT_LENGTH", 16 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_TIME_EXPIRED", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_TIME_EXPIRED", 17 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_NOT_PROVISIONED_WITH_IDENTITY", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_NOT_PROVISIONED_WITH_IDENTITY", 18 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_COULD_NOT_HASH_METADATA", "VCSEC__SIGNED_MESSAGE_INFORMATION__E__SIGNEDMESSAGE_INFORMATION_FAULT_COULD_NOT_HASH_METADATA", 19 },
+};
+static const ProtobufCIntRange vcsec__signed_message_information__e__value_ranges[] = {
+{0, 0},{0, 20}
+};
+static const ProtobufCEnumValueIndex vcsec__signed_message_information__e__enum_values_by_name[20] =
+{
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_AES_DECRYPT_AUTH", 6 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_COULD_NOT_HASH_METADATA", 19 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_COULD_NOT_RETRIEVE_KEY", 11 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_COULD_NOT_RETRIEVE_TOKEN", 12 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_ECDSA_INPUT", 7 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_ECDSA_SIGNATURE", 8 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_INCORRECT_EPOCH", 15 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_INVALID_TOKEN", 4 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_IV_INCORRECT_LENGTH", 16 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_IV_SMALLER_THAN_EXPECTED", 3 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_LOCAL_ENTITY_RESULT", 10 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_LOCAL_ENTITY_START", 9 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_NOT_ON_WHITELIST", 2 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_NOT_PROVISIONED_WITH_IDENTITY", 18 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_SIGNATURE_TOO_SHORT", 13 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_TIME_EXPIRED", 17 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_TOKEN_AND_COUNTER_INVALID", 5 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_TOKEN_IS_INCORRECT_LENGTH", 14 },
+  { "SIGNEDMESSAGE_INFORMATION_FAULT_UNKNOWN", 1 },
+  { "SIGNEDMESSAGE_INFORMATION_NONE", 0 },
+};
+const ProtobufCEnumDescriptor vcsec__signed_message_information__e__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "VCSEC.SignedMessage_information_E",
+  "SignedMessage_information_E",
+  "VCSEC__SignedMessageInformationE",
+  "VCSEC",
+  20,
+  vcsec__signed_message_information__e__enum_values_by_number,
+  20,
+  vcsec__signed_message_information__e__enum_values_by_name,
+  1,
+  vcsec__signed_message_information__e__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+static const ProtobufCEnumValue vcsec__whitelist_operation_information__e__enum_values_by_number[29] =
+{
+  { "WHITELISTOPERATION_INFORMATION_NONE", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_NONE", 0 },
+  { "WHITELISTOPERATION_INFORMATION_UNDOCUMENTED_ERROR", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_UNDOCUMENTED_ERROR", 1 },
+  { "WHITELISTOPERATION_INFORMATION_NO_PERMISSION_TO_REMOVE_ONESELF", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_NO_PERMISSION_TO_REMOVE_ONESELF", 2 },
+  { "WHITELISTOPERATION_INFORMATION_KEYFOB_SLOTS_FULL", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_KEYFOB_SLOTS_FULL", 3 },
+  { "WHITELISTOPERATION_INFORMATION_WHITELIST_FULL", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_WHITELIST_FULL", 4 },
+  { "WHITELISTOPERATION_INFORMATION_NO_PERMISSION_TO_ADD", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_NO_PERMISSION_TO_ADD", 5 },
+  { "WHITELISTOPERATION_INFORMATION_INVALID_PUBLIC_KEY", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_INVALID_PUBLIC_KEY", 6 },
+  { "WHITELISTOPERATION_INFORMATION_NO_PERMISSION_TO_REMOVE", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_NO_PERMISSION_TO_REMOVE", 7 },
+  { "WHITELISTOPERATION_INFORMATION_NO_PERMISSION_TO_CHANGE_PERMISSIONS", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_NO_PERMISSION_TO_CHANGE_PERMISSIONS", 8 },
+  { "WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_ELEVATE_OTHER_ABOVE_ONESELF", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_ELEVATE_OTHER_ABOVE_ONESELF", 9 },
+  { "WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_DEMOTE_SUPERIOR_TO_ONESELF", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_DEMOTE_SUPERIOR_TO_ONESELF", 10 },
+  { "WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_REMOVE_OWN_PERMISSIONS", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_REMOVE_OWN_PERMISSIONS", 11 },
+  { "WHITELISTOPERATION_INFORMATION_PUBLIC_KEY_NOT_ON_WHITELIST", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_PUBLIC_KEY_NOT_ON_WHITELIST", 12 },
+  { "WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_ADD_KEY_THAT_IS_ALREADY_ON_THE_WHITELIST", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_ADD_KEY_THAT_IS_ALREADY_ON_THE_WHITELIST", 13 },
+  { "WHITELISTOPERATION_INFORMATION_NOT_ALLOWED_TO_ADD_UNLESS_ON_READER", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_NOT_ALLOWED_TO_ADD_UNLESS_ON_READER", 14 },
+  { "WHITELISTOPERATION_INFORMATION_FM_MODIFYING_OUTSIDE_OF_F_MODE", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_FM_MODIFYING_OUTSIDE_OF_F_MODE", 15 },
+  { "WHITELISTOPERATION_INFORMATION_FM_ATTEMPTING_TO_ADD_PERMANENT_KEY", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_FM_ATTEMPTING_TO_ADD_PERMANENT_KEY", 16 },
+  { "WHITELISTOPERATION_INFORMATION_FM_ATTEMPTING_TO_REMOVE_PERMANENT_KEY", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_FM_ATTEMPTING_TO_REMOVE_PERMANENT_KEY", 17 },
+  { "WHITELISTOPERATION_INFORMATION_KEYCHAIN_WHILE_FS_FULL", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_KEYCHAIN_WHILE_FS_FULL", 18 },
+  { "WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_ADD_KEY_WITHOUT_ROLE", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_ADD_KEY_WITHOUT_ROLE", 19 },
+  { "WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_ADD_KEY_WITH_SERVICE_ROLE", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_ADD_KEY_WITH_SERVICE_ROLE", 20 },
+  { "WHITELISTOPERATION_INFORMATION_NON_SERVICE_KEY_ATTEMPTING_TO_ADD_SERVICE_TECH", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_NON_SERVICE_KEY_ATTEMPTING_TO_ADD_SERVICE_TECH", 21 },
+  { "WHITELISTOPERATION_INFORMATION_SERVICE_KEY_ATTEMPTING_TO_ADD_SERVICE_TECH_OUTSIDE_SERVICE_MODE", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_SERVICE_KEY_ATTEMPTING_TO_ADD_SERVICE_TECH_OUTSIDE_SERVICE_MODE", 22 },
+  { "WHITELISTOPERATION_INFORMATION_COULD_NOT_START_LOCAL_ENTITY_AUTH", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_COULD_NOT_START_LOCAL_ENTITY_AUTH", 23 },
+  { "WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_UI_DENIED", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_UI_DENIED", 24 },
+  { "WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_TIMED_OUT_WAITING_FOR_TAP", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_TIMED_OUT_WAITING_FOR_TAP", 25 },
+  { "WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_TIMED_OUT_WAITING_FOR_UI_ACK", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_TIMED_OUT_WAITING_FOR_UI_ACK", 26 },
+  { "WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_VALET_MODE", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_VALET_MODE", 27 },
+  { "WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_CANCELLED", "VCSEC__WHITELIST_OPERATION_INFORMATION__E__WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_CANCELLED", 28 },
+};
+static const ProtobufCIntRange vcsec__whitelist_operation_information__e__value_ranges[] = {
+{0, 0},{0, 29}
+};
+static const ProtobufCEnumValueIndex vcsec__whitelist_operation_information__e__enum_values_by_name[29] =
+{
+  { "WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_ADD_KEY_THAT_IS_ALREADY_ON_THE_WHITELIST", 13 },
+  { "WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_ADD_KEY_WITHOUT_ROLE", 19 },
+  { "WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_ADD_KEY_WITH_SERVICE_ROLE", 20 },
+  { "WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_DEMOTE_SUPERIOR_TO_ONESELF", 10 },
+  { "WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_ELEVATE_OTHER_ABOVE_ONESELF", 9 },
+  { "WHITELISTOPERATION_INFORMATION_ATTEMPTING_TO_REMOVE_OWN_PERMISSIONS", 11 },
+  { "WHITELISTOPERATION_INFORMATION_COULD_NOT_START_LOCAL_ENTITY_AUTH", 23 },
+  { "WHITELISTOPERATION_INFORMATION_FM_ATTEMPTING_TO_ADD_PERMANENT_KEY", 16 },
+  { "WHITELISTOPERATION_INFORMATION_FM_ATTEMPTING_TO_REMOVE_PERMANENT_KEY", 17 },
+  { "WHITELISTOPERATION_INFORMATION_FM_MODIFYING_OUTSIDE_OF_F_MODE", 15 },
+  { "WHITELISTOPERATION_INFORMATION_INVALID_PUBLIC_KEY", 6 },
+  { "WHITELISTOPERATION_INFORMATION_KEYCHAIN_WHILE_FS_FULL", 18 },
+  { "WHITELISTOPERATION_INFORMATION_KEYFOB_SLOTS_FULL", 3 },
+  { "WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_CANCELLED", 28 },
+  { "WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_TIMED_OUT_WAITING_FOR_TAP", 25 },
+  { "WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_TIMED_OUT_WAITING_FOR_UI_ACK", 26 },
+  { "WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_UI_DENIED", 24 },
+  { "WHITELISTOPERATION_INFORMATION_LOCAL_ENTITY_AUTH_FAILED_VALET_MODE", 27 },
+  { "WHITELISTOPERATION_INFORMATION_NONE", 0 },
+  { "WHITELISTOPERATION_INFORMATION_NON_SERVICE_KEY_ATTEMPTING_TO_ADD_SERVICE_TECH", 21 },
+  { "WHITELISTOPERATION_INFORMATION_NOT_ALLOWED_TO_ADD_UNLESS_ON_READER", 14 },
+  { "WHITELISTOPERATION_INFORMATION_NO_PERMISSION_TO_ADD", 5 },
+  { "WHITELISTOPERATION_INFORMATION_NO_PERMISSION_TO_CHANGE_PERMISSIONS", 8 },
+  { "WHITELISTOPERATION_INFORMATION_NO_PERMISSION_TO_REMOVE", 7 },
+  { "WHITELISTOPERATION_INFORMATION_NO_PERMISSION_TO_REMOVE_ONESELF", 2 },
+  { "WHITELISTOPERATION_INFORMATION_PUBLIC_KEY_NOT_ON_WHITELIST", 12 },
+  { "WHITELISTOPERATION_INFORMATION_SERVICE_KEY_ATTEMPTING_TO_ADD_SERVICE_TECH_OUTSIDE_SERVICE_MODE", 22 },
+  { "WHITELISTOPERATION_INFORMATION_UNDOCUMENTED_ERROR", 1 },
+  { "WHITELISTOPERATION_INFORMATION_WHITELIST_FULL", 4 },
+};
+const ProtobufCEnumDescriptor vcsec__whitelist_operation_information__e__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "VCSEC.WhitelistOperation_information_E",
+  "WhitelistOperation_information_E",
+  "VCSEC__WhitelistOperationInformationE",
+  "VCSEC",
+  29,
+  vcsec__whitelist_operation_information__e__enum_values_by_number,
+  29,
+  vcsec__whitelist_operation_information__e__enum_values_by_name,
+  1,
+  vcsec__whitelist_operation_information__e__value_ranges,
   NULL,NULL,NULL,NULL   /* reserved[1234] */
 };
 static const ProtobufCEnumValue vcsec__closure_state__e__enum_values_by_number[7] =
@@ -1954,35 +2868,5 @@ const ProtobufCEnumDescriptor vcsec__user_presence__e__descriptor =
   vcsec__user_presence__e__enum_values_by_name,
   1,
   vcsec__user_presence__e__value_ranges,
-  NULL,NULL,NULL,NULL   /* reserved[1234] */
-};
-static const ProtobufCEnumValue vcsec__operation_status__e__enum_values_by_number[3] =
-{
-  { "OPERATIONSTATUS_OK", "VCSEC__OPERATION_STATUS__E__OPERATIONSTATUS_OK", 0 },
-  { "OPERATIONSTATUS_WAIT", "VCSEC__OPERATION_STATUS__E__OPERATIONSTATUS_WAIT", 1 },
-  { "OPERATIONSTATUS_ERROR", "VCSEC__OPERATION_STATUS__E__OPERATIONSTATUS_ERROR", 2 },
-};
-static const ProtobufCIntRange vcsec__operation_status__e__value_ranges[] = {
-{0, 0},{0, 3}
-};
-static const ProtobufCEnumValueIndex vcsec__operation_status__e__enum_values_by_name[3] =
-{
-  { "OPERATIONSTATUS_ERROR", 2 },
-  { "OPERATIONSTATUS_OK", 0 },
-  { "OPERATIONSTATUS_WAIT", 1 },
-};
-const ProtobufCEnumDescriptor vcsec__operation_status__e__descriptor =
-{
-  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
-  "VCSEC.OperationStatus_E",
-  "OperationStatus_E",
-  "VCSEC__OperationStatusE",
-  "VCSEC",
-  3,
-  vcsec__operation_status__e__enum_values_by_number,
-  3,
-  vcsec__operation_status__e__enum_values_by_name,
-  1,
-  vcsec__operation_status__e__value_ranges,
   NULL,NULL,NULL,NULL   /* reserved[1234] */
 };

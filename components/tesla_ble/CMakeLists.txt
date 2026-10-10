@@ -65,6 +65,8 @@ idf_component_register(
         "tesla_ble.c"
         "tesla_protocol.c"
         "tesla_crypto.c"
+        "tesla_transport.c"
+        "tesla_session.c"
         ${PROTO_C_SRCS}
     INCLUDE_DIRS
         "include"

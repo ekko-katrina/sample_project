@@ -20,50 +20,20 @@ typedef struct Errors__NominalError Errors__NominalError;
 
 /* --- enums --- */
 
-/*
- * 通用错误枚举
- */
 typedef enum _Errors__GenericErrorE {
-  /*
-   * 无错误
-   */
   ERRORS__GENERIC_ERROR__E__GENERICERROR_NONE = 0,
-  /*
-   * 未知错误
-   */
   ERRORS__GENERIC_ERROR__E__GENERICERROR_UNKNOWN = 1,
-  /*
-   * 门/盖未关
-   */
   ERRORS__GENERIC_ERROR__E__GENERICERROR_CLOSURES_OPEN = 2,
-  /*
-   * 已处于该状态
-   */
   ERRORS__GENERIC_ERROR__E__GENERICERROR_ALREADY_ON = 3,
-  /*
-   * 该命令已被禁用（用户/策略）
-   */
   ERRORS__GENERIC_ERROR__E__GENERICERROR_DISABLED_FOR_USER_COMMAND = 4,
-  /*
-   * 车辆未挂 P 档
-   */
   ERRORS__GENERIC_ERROR__E__GENERICERROR_VEHICLE_NOT_IN_PARK = 5,
-  /*
-   * 未授权
-   */
   ERRORS__GENERIC_ERROR__E__GENERICERROR_UNAUTHORIZED = 6,
-  /*
-   * 当前传输方式（如 BLE/Fleet API）不允许该命令
-   */
   ERRORS__GENERIC_ERROR__E__GENERICERROR_NOT_ALLOWED_OVER_TRANSPORT = 7
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(ERRORS__GENERIC_ERROR__E)
 } Errors__GenericErrorE;
 
 /* --- messages --- */
 
-/*
- * 名义错误消息（携带通用错误码）
- */
 struct  Errors__NominalError
 {
   ProtobufCMessage base;

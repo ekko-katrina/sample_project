@@ -27,6 +27,7 @@
 #include "tesla_ble.h"
 #include "tesla_protocol.h"
 #include "universal_message.pb-c.h"
+#include "vcsec.pb-c.h"
 
 static const char *TAG = "TESLA_BLE";
 
@@ -58,6 +59,13 @@ static SemaphoreHandle_t g_mutex = NULL;         // 互斥锁
 static SemaphoreHandle_t g_rx_sem = NULL;        // 接收信号量
 static SemaphoreHandle_t g_tx_sem = NULL;        // 写完成信号量
 static volatile bool g_operations_cancelled;
+static SemaphoreHandle_t g_operation_mutex;
+static tesla_stream_t g_stream;
+static tesla_request_t g_request;
+static uint8_t g_payload[TESLA_MAX_MESSAGE_SIZE];
+static volatile int g_tx_status;
+static uintptr_t g_tx_generation;
+static uint32_t g_request_sent_ms;
 
 // 回调函数
 static tesla_state_callback_t g_state_cb = NULL;
@@ -75,6 +83,7 @@ static bool g_connect_task_running = false;
 static int tesla_gap_event(struct ble_gap_event *event, void *arg);
 static void tesla_connect_task(void *arg);
 static void clear_pending_notifications(TickType_t mutex_timeout_ticks);
+static bool begin_operation(void);
 
 // sample_project 已有 FFF0 手机外设服务；集成模式只保留 Tesla Central。
 #ifndef TESLA_BLE_EXTERNAL_HOST
@@ -469,6 +478,7 @@ static void clear_pending_notifications(TickType_t mutex_timeout_ticks)
     if (xSemaphoreTake(g_mutex, mutex_timeout_ticks) == pdTRUE) {
         g_conn.rx_len = 0;
         g_conn.rx_complete = false;
+        tesla_stream_reset(&g_stream);
         xSemaphoreGive(g_mutex);
     }
 }
@@ -656,8 +666,10 @@ static void tesla_connect_task(void *arg)
 static int tesla_on_write(uint16_t conn_handle, const struct ble_gatt_error *error,
                           struct ble_gatt_attr *attr, void *arg)
 {
+    if ((uintptr_t)arg != g_tx_generation || conn_handle != g_conn.conn_handle) return 0;
+    g_tx_status = error->status;
     if (error->status == 0) {
-        ESP_LOGI(TAG, "Write complete, handle=%d", attr->handle);
+        ESP_LOGD(TAG, "Write complete, handle=%d", attr ? attr->handle : 0);
     } else {
         ESP_LOGE(TAG, "Write failed, status=%d", error->status);
     }
@@ -678,9 +690,12 @@ static int tesla_on_write(uint16_t conn_handle, const struct ble_gatt_error *err
 static int tesla_on_mtu_exchange(uint16_t conn_handle, const struct ble_gatt_error *error,
                                   uint16_t mtu, void *arg)
 {
+    if (g_operations_cancelled || conn_handle != g_conn.conn_handle) return 0;
     if (error->status == 0) {
+        g_conn.mtu = mtu;
         ESP_LOGI(TAG, "MTU exchange complete, MTU=%d", mtu);
     } else {
+        g_conn.mtu = 23;
         ESP_LOGW(TAG, "MTU exchange failed: %d, using default MTU", error->status);
     }
     // 无论 MTU 交换是否成功，都通知服务发现完成
@@ -699,6 +714,7 @@ static int tesla_on_mtu_exchange(uint16_t conn_handle, const struct ble_gatt_err
 static int tesla_on_subscribe(uint16_t conn_handle, const struct ble_gatt_error *error,
                               struct ble_gatt_attr *attr, void *arg)
 {
+    if (g_operations_cancelled || conn_handle != g_conn.conn_handle) return 0;
     if (error->status == 0) {
         ESP_LOGI(TAG, "Subscribed to notifications");
         // 订阅成功后，发起 MTU 交换（与 Go SDK 一致）
@@ -710,6 +726,7 @@ static int tesla_on_subscribe(uint16_t conn_handle, const struct ble_gatt_error 
         }
     } else {
         ESP_LOGE(TAG, "Subscribe failed: %d", error->status);
+        ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
     }
     return 0;
 }
@@ -721,7 +738,7 @@ static int tesla_on_subscribe(uint16_t conn_handle, const struct ble_gatt_error 
  */
 static void tesla_subscribe_notifications(uint16_t conn_handle, uint16_t cccd_handle)
 {
-    uint8_t value[2] = {0x01, 0x00};  // 启用通知
+    uint8_t value[2] = {0x02, 0x00};  // Official SDK Subscribe(rx, true): Indication
     int rc = ble_gattc_write_flat(conn_handle, cccd_handle, value, sizeof(value),
                                    tesla_on_subscribe, NULL);
     if (rc != 0) {
@@ -732,6 +749,22 @@ static void tesla_subscribe_notifications(uint16_t conn_handle, uint16_t cccd_ha
 // 简单的对等设备/服务跟踪
 static uint16_t g_svc_start_handle = 0;
 static uint16_t g_svc_end_handle = 0;
+static uint16_t g_rx_end_handle;
+static uint16_t g_cccd_handle;
+
+static int tesla_on_dsc_disc(uint16_t conn_handle, const struct ble_gatt_error *error,
+    uint16_t chr_val_handle, const struct ble_gatt_dsc *dsc, void *arg)
+{
+    if (g_operations_cancelled || conn_handle != g_conn.conn_handle) return 0;
+    if (!error->status && dsc && ble_uuid_u16(&dsc->uuid.u) == 0x2902) g_cccd_handle = dsc->handle;
+    else if (error->status == BLE_HS_EDONE && g_cccd_handle)
+        tesla_subscribe_notifications(conn_handle, g_cccd_handle);
+    else if (error->status) {
+        ESP_LOGE(TAG, "RX descriptor discovery failed/no CCCD: %d", error->status);
+        ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+    }
+    return 0;
+}
 
 /**
  * @brief 特征发现回调
@@ -744,7 +777,10 @@ static uint16_t g_svc_end_handle = 0;
 static int tesla_on_chr_disc(uint16_t conn_handle, const struct ble_gatt_error *error,
                              const struct ble_gatt_chr *chr, void *arg)
 {
+    if (g_operations_cancelled || conn_handle != g_conn.conn_handle) return 0;
     if (error->status == 0 && chr != NULL) {
+        if (g_conn.read_handle && chr->def_handle > g_conn.read_handle &&
+            chr->def_handle - 1 < g_rx_end_handle) g_rx_end_handle = chr->def_handle - 1;
         // 打印 UUID 用于调试
         if (chr->uuid.u.type == BLE_UUID_TYPE_128) {
             const uint8_t *u = chr->uuid.u128.value;
@@ -765,17 +801,17 @@ static int tesla_on_chr_disc(uint16_t conn_handle, const struct ble_gatt_error *
         // 检查是否为读特征
         else if (ble_uuid_cmp(&chr->uuid.u, &tesla_read_chr_uuid.u) == 0) {
             g_conn.read_handle = chr->val_handle;
+            g_rx_end_handle = g_svc_end_handle;
             ESP_LOGI(TAG, "Read characteristic MATCHED: %d", g_conn.read_handle);
         }
     } else if (error->status == BLE_HS_EDONE) {
         ESP_LOGI(TAG, "Characteristic discovery complete");
 
-        // 现在发现描述符以查找 CCCD
-        if (g_conn.read_handle != 0) {
-            // 订阅通知 - 首先查找 CCCD
-            // 为简单起见，假设 CCCD 在 read_handle + 1
-            tesla_subscribe_notifications(conn_handle, g_conn.read_handle + 1);
-        }
+        g_cccd_handle = 0;
+        if (!g_conn.read_handle || !g_conn.write_handle ||
+            ble_gattc_disc_all_dscs(conn_handle, g_conn.read_handle, g_rx_end_handle,
+                tesla_on_dsc_disc, NULL) != 0)
+            ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
     }
     return 0;
 }
@@ -791,6 +827,7 @@ static int tesla_on_chr_disc(uint16_t conn_handle, const struct ble_gatt_error *
 static int tesla_on_svc_disc(uint16_t conn_handle, const struct ble_gatt_error *error,
                              const struct ble_gatt_svc *svc, void *arg)
 {
+    if (g_operations_cancelled || conn_handle != g_conn.conn_handle) return 0;
     if (error->status == 0 && svc != NULL) {
         // 打印 UUID 用于调试
         if (svc->uuid.u.type == BLE_UUID_TYPE_128) {
@@ -929,17 +966,23 @@ static int tesla_gap_event(struct ble_gap_event *event, void *arg)
 
     case BLE_GAP_EVENT_NOTIFY_RX:
         {
+            if (event->notify_rx.conn_handle != g_conn.conn_handle ||
+                event->notify_rx.attr_handle != g_conn.read_handle) return 0;
             uint16_t len = OS_MBUF_PKTLEN(event->notify_rx.om);
             ESP_LOGD(TAG, "Notification received, handle=%d, len=%d", event->notify_rx.attr_handle, len);
 
             // 累积数据到接收缓冲区（多个通知可能形成一条消息）
             BaseType_t got_mutex = xSemaphoreTake(g_mutex, pdMS_TO_TICKS(1000));
             if (got_mutex == pdTRUE) {
-                if (g_conn.rx_len + len <= sizeof(g_conn.rx_buffer)) {
-                    os_mbuf_copydata(event->notify_rx.om, 0, len, g_conn.rx_buffer + g_conn.rx_len);
-                    g_conn.rx_len += len;
-                } else {
-                    ESP_LOGW(TAG, "RX buffer full!");
+                uint8_t fragment[128];
+                for (uint16_t offset = 0; offset < len;) {
+                    uint16_t size = len - offset;
+                    if (size > sizeof(fragment)) size = sizeof(fragment);
+                    os_mbuf_copydata(event->notify_rx.om, offset, size, fragment);
+                    if (!tesla_stream_feed(&g_stream, fragment, size,
+                        (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS)))
+                        ESP_LOGW(TAG, "Invalid frame or RX inbox full");
+                    offset += size;
                 }
                 xSemaphoreGive(g_mutex);
 
@@ -1007,7 +1050,8 @@ esp_err_t tesla_ble_init(void)
     g_mutex = xSemaphoreCreateMutex();
     g_rx_sem = xSemaphoreCreateBinary();
     g_tx_sem = xSemaphoreCreateBinary();
-    if (!g_mutex || !g_rx_sem || !g_tx_sem) {
+    g_operation_mutex = xSemaphoreCreateMutex();
+    if (!g_mutex || !g_rx_sem || !g_tx_sem || !g_operation_mutex) {
         return ESP_ERR_NO_MEM;
     }
 
@@ -1074,6 +1118,10 @@ void tesla_ble_deinit(void)
     if (g_tx_sem) {
         vSemaphoreDelete(g_tx_sem);
         g_tx_sem = NULL;
+    }
+    if (g_operation_mutex) {
+        vSemaphoreDelete(g_operation_mutex);
+        g_operation_mutex = NULL;
     }
 }
 
@@ -1270,10 +1318,13 @@ void tesla_ble_invalidate_data(void)
 
 void tesla_ble_reset_session(void)
 {
+    xSemaphoreTake(g_operation_mutex, portMAX_DELAY);
     xSemaphoreTake(g_mutex, portMAX_DELAY);
     memset(g_conn.session, 0, sizeof(g_conn.session));
     memset(g_conn.last_request_id, 0, sizeof(g_conn.last_request_id));
     memset(g_conn.rx_buffer, 0, sizeof(g_conn.rx_buffer));
+    tesla_stream_reset(&g_stream);
+    memset(&g_request, 0, sizeof(g_request));
     g_conn.rx_len = 0;
     g_conn.rx_complete = false;
     memset(&g_vehicle_state, 0, sizeof(g_vehicle_state));
@@ -1285,6 +1336,7 @@ void tesla_ble_reset_session(void)
         notify_state_change(TESLA_STATE_DISCONNECTED);
     else if (g_conn.state == TESLA_STATE_AUTHENTICATED)
         notify_state_change(TESLA_STATE_SERVICE_DISCOVERED);
+    xSemaphoreGive(g_operation_mutex);
 }
 
 /**
@@ -1320,217 +1372,107 @@ esp_err_t tesla_ble_get_vehicle_state(tesla_vehicle_state_t *state)
  * @param timeout_ms 超时时间（毫秒）
  * @return true 如果接收到完整响应
  * 
- * 注意：调用者应在发送请求前清除接收缓冲区
- * 不要在此处清除接收缓冲区，因为响应可能已经到达
+ * 从独立消息队列取出快照，再按当前请求匹配，不丢弃同批后续帧。
  */
+/* RX callbacks only write the stream inbox; this task owns the immutable snapshot. */
 static bool wait_for_response(uint32_t timeout_ms)
 {
-    ESP_LOGD(TAG, "Waiting for response (timeout=%lu ms)...", (unsigned long)timeout_ms);
-
-    // 等待完整消息（可能分多个通知到达）
     TickType_t start = xTaskGetTickCount();
-    TickType_t timeout = pdMS_TO_TICKS(timeout_ms);
-
-    while ((xTaskGetTickCount() - start) < timeout) {
+    while (xTaskGetTickCount() - start < pdMS_TO_TICKS(timeout_ms)) {
         if (g_operations_cancelled || g_conn.conn_handle == BLE_HS_CONN_HANDLE_NONE) return false;
-        // 首先检查是否已有完整消息
-        if (xSemaphoreTake(g_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            if (g_conn.rx_len >= 2) {
-                uint16_t msg_len = (g_conn.rx_buffer[0] << 8) | g_conn.rx_buffer[1];
-                if (msg_len > 0 && g_conn.rx_len >= 2 + msg_len) {
-                    // 移除长度头，移动数据
-                    g_conn.rx_len = msg_len;
-                    memmove(g_conn.rx_buffer, g_conn.rx_buffer + 2, msg_len);
-                    g_conn.rx_complete = true;
-                    xSemaphoreGive(g_mutex);
-                    ESP_LOGD(TAG, "Complete message received: %d bytes", msg_len);
-                    return true;
-                }
-            }
+        if (xSemaphoreTake(g_mutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+            bool ready = tesla_stream_pop(&g_stream, g_conn.rx_buffer, &g_conn.rx_len);
             xSemaphoreGive(g_mutex);
+            if (ready && tesla_response_matches(g_conn.rx_buffer, g_conn.rx_len, &g_request)) return true;
         }
-
-        // 等待新数据，使用较短超时以快速反应
         xSemaphoreTake(g_rx_sem, pdMS_TO_TICKS(20));
-    }
-
-    // 超时时打印最终缓冲区状态
-    if (xSemaphoreTake(g_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        ESP_LOGW(TAG, "Timeout! Final rx_len=%d", g_conn.rx_len);
-        xSemaphoreGive(g_mutex);
     }
     return false;
 }
 
-/**
- * @brief 发送消息
- * @param data 数据缓冲区
- * @param len 数据长度
- * @return ESP_OK 成功
- */
 static esp_err_t send_message(const uint8_t *data, uint16_t len)
 {
-    if (g_operations_cancelled || g_conn.write_handle == 0) {
+    if (g_operations_cancelled || !g_conn.write_handle || g_conn.conn_handle == BLE_HS_CONN_HANDLE_NONE)
         return ESP_ERR_INVALID_STATE;
-    }
-
-    // 构建带 2 字节长度头的消息（大端序）
-    uint8_t msg[1024];
-    if (len + 2 > sizeof(msg)) {
-        return ESP_ERR_NO_MEM;
-    }
-    msg[0] = (len >> 8) & 0xFF;
-    msg[1] = len & 0xFF;
+    if (!len || len > TESLA_MAX_MESSAGE_SIZE) return ESP_ERR_INVALID_SIZE;
+    uint8_t msg[TESLA_MAX_MESSAGE_SIZE + 2];
+    msg[0] = len >> 8; msg[1] = len;
     memcpy(msg + 2, data, len);
-
-    uint16_t total_len = len + 2;
-    uint16_t offset = 0;
-    // 使用协商的 MTU，如果未设置则使用默认值 20（最小 BLE MTU）
-    // 减去 3 以考虑 ATT 头开销
-    uint16_t mtu = (g_conn.mtu > 3) ? (g_conn.mtu - 3) : 20;
-
-    ESP_LOGD(TAG, "Sending message: payload=%d, total=%d, mtu=%d", len, total_len, mtu);
-    ESP_LOGD(TAG, "原始消息 (%d 字节):", len);
-    ESP_LOG_BUFFER_HEX_LEVEL(TAG, data, len, ESP_LOG_DEBUG);
-    ESP_LOGD(TAG, "带长度前缀 (%d 字节):", total_len);
-    ESP_LOG_BUFFER_HEX_LEVEL(TAG, msg, total_len, ESP_LOG_DEBUG);
-
-    // 如需分块发送
-    // 使用无响应写入（写命令）以获得更快的吞吐量
-    // 这样可以避免等待车辆对每个块的确认
-    while (offset < total_len) {
+    /* Pairing uses a direct ToVCSEC envelope; all routable requests register a handler. */
+    memset(&g_request, 0, sizeof(g_request));
+    tesla_request_capture(data, len, &g_request);
+    g_request_sent_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    uint16_t mtu = g_conn.mtu > 3 ? g_conn.mtu - 3 : 20;
+    if (mtu > TESLA_MAX_MESSAGE_SIZE - 3) mtu = TESLA_MAX_MESSAGE_SIZE - 3;
+    for (uint16_t offset = 0; offset < len + 2;) {
         if (g_operations_cancelled) return ESP_ERR_INVALID_STATE;
-        uint16_t chunk_len = (total_len - offset > mtu) ? mtu : (total_len - offset);
-
-        int rc = ble_gattc_write_no_rsp_flat(g_conn.conn_handle, g_conn.write_handle,
-                                              msg + offset, chunk_len);
-        if (rc != 0) {
-            ESP_LOGE(TAG, "Write failed: %d", rc);
-            return ESP_FAIL;
+        uint16_t size = len + 2 - offset;
+        if (size > mtu) size = mtu;
+        while (xSemaphoreTake(g_tx_sem, 0) == pdTRUE) {}
+        ++g_tx_generation;
+        g_tx_status = BLE_HS_ETIMEOUT;
+        int rc = ble_gattc_write_flat(g_conn.conn_handle, g_conn.write_handle,
+            msg + offset, size, tesla_on_write, (void *)g_tx_generation);
+        if (rc) return ESP_FAIL;
+        TickType_t start = xTaskGetTickCount();
+        while (xSemaphoreTake(g_tx_sem, pdMS_TO_TICKS(20)) != pdTRUE) {
+            if (g_operations_cancelled) return ESP_ERR_INVALID_STATE;
+            if (xTaskGetTickCount() - start >= pdMS_TO_TICKS(3000)) {
+                /* Do not reuse a connection with an ambiguous outstanding ATT write. */
+                tesla_ble_disconnect();
+                return ESP_ERR_TIMEOUT;
+            }
         }
-
-        offset += chunk_len;
+        if (g_operations_cancelled) return ESP_ERR_INVALID_STATE;
+        if (g_tx_status) return ESP_FAIL;
+        offset += size;
     }
-
-    ESP_LOGI(TAG, "Message sent successfully");
     return ESP_OK;
 }
 
-/**
- * @brief 与车辆建立加密会话（密钥交换）
- * @param domain 目标域（VCSEC 或 Infotainment）
- * @return ESP_OK 成功，其他值失败
- */
-esp_err_t tesla_ble_start_session(tesla_domain_t domain)
+static tesla_session_info_result_t update_session(tesla_session_t *session)
 {
-    uint8_t buf[256];
-    uint32_t len;
-
-    int idx = (domain == TESLA_DOMAIN_INFOTAINMENT) ? 1 : 0;
-    tesla_session_t *session = &g_conn.session[idx];
-
-    // 在发送会话请求前清除所有待处理的通知
-    ESP_LOGI(TAG, "Starting session for domain %d...", domain);
-    clear_pending_notifications(pdMS_TO_TICKS(100));
-
-    // 构建会话信息请求
-    len = tesla_build_session_info_request(buf, sizeof(buf), domain,
-                                            g_conn.public_key,
-                                            g_conn.routing_address);
-    if (len == 0) {
-        return ESP_FAIL;
-    }
-
-    // 发送请求
-    esp_err_t ret = send_message(buf, len);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-
-    // 等待响应，使用重试逻辑跳过 VCSEC 广播
-    TickType_t start = xTaskGetTickCount();
-    TickType_t timeout = pdMS_TO_TICKS(10000);
-
-    while ((xTaskGetTickCount() - start) < timeout) {
-        if (g_operations_cancelled) return ESP_ERR_INVALID_STATE;
-        // 等待消息
-        if (!wait_for_response(2000)) {
-            ESP_LOGW(TAG, "No response yet, continuing to wait...");
-            continue;
-        }
-
-        UniversalMessage__RoutableMessage *response = universal_message__routable_message__unpack(
-            NULL, g_conn.rx_len, g_conn.rx_buffer);
-        bool matches = response && response->from_destination &&
-            response->from_destination->sub_destination_case == UNIVERSAL_MESSAGE__DESTINATION__SUB_DESTINATION_DOMAIN &&
-            (int)response->from_destination->domain == (int)domain &&
-            response->payload_case == UNIVERSAL_MESSAGE__ROUTABLE_MESSAGE__PAYLOAD_SESSION_INFO;
-        if (response) universal_message__routable_message__free_unpacked(response, NULL);
-        if (!matches) {
-            clear_pending_notifications(pdMS_TO_TICKS(100));
-            continue;
-        }
-
-        // 尝试解析会话信息
-        tesla_session_info_result_t parsed =
-            tesla_parse_session_info(g_conn.rx_buffer, g_conn.rx_len, session);
-        if (parsed == TESLA_SESSION_INFO_KEY_NOT_ON_WHITELIST) {
-            session->established = false;
-            ESP_LOGE(TAG, "Session rejected: device key is not authorized on vehicle");
-            return TESLA_ERR_KEY_NOT_ON_WHITELIST;
-        }
-        if (parsed == TESLA_SESSION_INFO_OK) {
-            if (g_operations_cancelled) return ESP_ERR_INVALID_STATE;
-            // 成功！计算 ECDH 共享密钥
-            if (!tesla_crypto_ecdh(g_conn.private_key, session->vehicle_public_key,
-                                   session->shared_secret)) {
-                ESP_LOGE(TAG, "ECDH failed");
-                return ESP_FAIL;
-            }
-
-            // 派生会话密钥
-            tesla_crypto_derive_key(session->shared_secret, session->session_key);
-
-            // 调试：会话信息仅 DEBUG 级别输出，避免泄露密钥
-            ESP_LOGD(TAG, "=== Session Debug Info ===");
-            ESP_LOGD(TAG, "  Shared secret:");
-            ESP_LOG_BUFFER_HEX_LEVEL(TAG, session->shared_secret, 32, ESP_LOG_DEBUG);
-            ESP_LOGD(TAG, "  Session key (16 bytes):");
-            ESP_LOG_BUFFER_HEX_LEVEL(TAG, session->session_key, 16, ESP_LOG_DEBUG);
-            ESP_LOGD(TAG, "  Vehicle public key:");
-            ESP_LOG_BUFFER_HEX_LEVEL(TAG, session->vehicle_public_key, 65, ESP_LOG_DEBUG);
-            ESP_LOGD(TAG, "  Epoch:");
-            ESP_LOG_BUFFER_HEX_LEVEL(TAG, session->epoch, 16, ESP_LOG_DEBUG);
-            ESP_LOGD(TAG, "  Counter=%lu, Clock=%lu",
-                     (unsigned long)session->counter, (unsigned long)session->clock_time);
-
-            // 记录会话建立时的本地时间（用于 expires_at 计算）
-            session->local_time_sec = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS / 1000);
-
-            session->established = true;
-            ESP_LOGI(TAG, "Session established for domain %d", domain);
-
-            if (domain == TESLA_DOMAIN_VEHICLE_SECURITY) {
-                notify_state_change(TESLA_STATE_AUTHENTICATED);
-            }
-
-            return ESP_OK;
-        }
-
-        ESP_LOGW(TAG, "Failed to parse session info, waiting for correct response...");
-        // 清除缓冲区并等待下一条消息
-        if (xSemaphoreTake(g_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-            g_conn.rx_len = 0;
-            g_conn.rx_complete = false;
-            xSemaphoreGive(g_mutex);
-        }
-    }
-
-    ESP_LOGE(TAG, "Session info request timeout after retries");
-    return ESP_ERR_TIMEOUT;
+    uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    if (now_ms - g_request_sent_ms > 4000U) return TESLA_SESSION_INFO_INVALID;
+    return tesla_verify_session_info(g_conn.rx_buffer, g_conn.rx_len,
+        g_conn.private_key, g_conn.vin, &g_request, now_ms / 1000, session);
 }
 
-// ========== 车辆命令 ==========
+static esp_err_t start_session(tesla_domain_t domain)
+{
+    if (domain != TESLA_DOMAIN_VEHICLE_SECURITY && domain != TESLA_DOMAIN_INFOTAINMENT)
+        return ESP_ERR_INVALID_ARG;
+    tesla_session_t *session = &g_conn.session[domain == TESLA_DOMAIN_INFOTAINMENT];
+    for (unsigned attempt = 0; attempt < 3; ++attempt) {
+        if (g_operations_cancelled) return ESP_ERR_INVALID_STATE;
+        uint8_t buf[256];
+        clear_pending_notifications(pdMS_TO_TICKS(100));
+        if (domain == TESLA_DOMAIN_VEHICLE_SECURITY) esp_fill_random(g_conn.routing_address, 16);
+        uint32_t len = tesla_build_session_info_request(buf, sizeof(buf), domain,
+            g_conn.public_key, g_conn.routing_address);
+        if (!len) return ESP_FAIL;
+        esp_err_t result = send_message(buf, len);
+        if (result != ESP_OK) return result;
+        TickType_t start = xTaskGetTickCount();
+        while (xTaskGetTickCount() - start < pdMS_TO_TICKS(4000)) {
+            if (!wait_for_response(100)) {
+                if (g_operations_cancelled) return ESP_ERR_INVALID_STATE;
+                continue;
+            }
+            tesla_session_info_result_t info = update_session(session);
+            if (info == TESLA_SESSION_INFO_KEY_NOT_ON_WHITELIST) return TESLA_ERR_KEY_NOT_ON_WHITELIST;
+            if (info == TESLA_SESSION_INFO_OK) {
+                if (g_operations_cancelled) { session->established = false; return ESP_ERR_INVALID_STATE; }
+                if (domain == TESLA_DOMAIN_VEHICLE_SECURITY) notify_state_change(TESLA_STATE_AUTHENTICATED);
+                return ESP_OK;
+            }
+            ESP_LOGW(TAG, "Discarding unverified/mismatched SessionInfo");
+        }
+        /* Retry interval is 1s in the BLE SDK; remain interruptible by C2/C4. */
+        for (unsigned i = 0; i < 50 && !g_operations_cancelled; ++i) vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    return g_operations_cancelled ? ESP_ERR_INVALID_STATE : ESP_ERR_TIMEOUT;
+}
 
 /**
  * @brief 发送添加密钥请求（配对）
@@ -1538,7 +1480,7 @@ esp_err_t tesla_ble_start_session(tesla_domain_t domain)
  * 
  * 向车辆发送配对请求，需要用户在车辆屏幕上确认并使用 NFC 卡验证
  */
-esp_err_t tesla_ble_add_key_request(void)
+static esp_err_t add_key_request(void)
 {
     uint8_t buf[512];  // 增加缓冲区大小以容纳包装的消息
     uint32_t len;
@@ -1596,351 +1538,186 @@ esp_err_t tesla_ble_add_key_request(void)
  * 
  * 获取车辆锁定状态、车门状态等信息
  */
-esp_err_t tesla_ble_get_body_state(void)
+/* One request handler at a time, with domain/address/UUID correlation and a
+ * per-request replay window, matching the official dispatcher semantics. */
+static esp_err_t exchange(tesla_domain_t domain, const uint8_t *payload, uint32_t size,
+    bool authenticated, bool control, uint32_t *reply_len)
+{
+    tesla_session_t *session = &g_conn.session[domain == TESLA_DOMAIN_INFOTAINMENT];
+    if (authenticated && !session->established) {
+        esp_err_t error = start_session(domain);
+        if (error != ESP_OK) return error;
+    }
+    for (unsigned attempt = 0; attempt < 3; ++attempt) {
+        if (g_operations_cancelled) return ESP_ERR_INVALID_STATE;
+        clear_pending_notifications(pdMS_TO_TICKS(100));
+        if (domain == TESLA_DOMAIN_VEHICLE_SECURITY) esp_fill_random(g_conn.routing_address, 16);
+        uint8_t wire[512];
+        uint32_t len;
+        if (authenticated) {
+            if (session->counter == UINT32_MAX) {
+                session->established = false;
+                return ESP_ERR_INVALID_STATE;
+            }
+            ++session->counter;
+            len = tesla_build_routable_message(wire, sizeof(wire), domain, payload, size,
+                session, g_conn.routing_address, g_conn.public_key, g_conn.vin,
+                1U << TESLA_FLAG_ENCRYPT_RESPONSE, g_conn.last_request_id);
+        } else {
+            len = tesla_build_vcsec_message_unauthenticated(wire, sizeof(wire), domain,
+                payload, size, g_conn.routing_address);
+        }
+        if (!len) return ESP_FAIL;
+        esp_err_t error = send_message(wire, len);
+        if (error != ESP_OK) return error;
+        bool retry = false;
+        TickType_t start = xTaskGetTickCount();
+        while (xTaskGetTickCount() - start < pdMS_TO_TICKS(4000)) {
+            if (!wait_for_response(100)) {
+                if (g_operations_cancelled) return ESP_ERR_INVALID_STATE;
+                continue;
+            }
+            /* A signed SessionInfo can accompany an authentication fault. */
+            tesla_session_info_result_t info = update_session(session);
+            if (info == TESLA_SESSION_INFO_KEY_NOT_ON_WHITELIST) return TESLA_ERR_KEY_NOT_ON_WHITELIST;
+            tesla_fault_t fault;
+            tesla_reply_result_t result = tesla_decode_response(g_conn.rx_buffer, g_conn.rx_len,
+                session, g_conn.vin, &g_request, g_payload, sizeof(g_payload), reply_len, &fault);
+            if (result == TESLA_REPLY_FAULT) {
+                ESP_LOGW(TAG, "Vehicle domain %d fault %d", domain, fault);
+                if (fault == TESLA_FAULT_UNKNOWN_KEY_ID) return TESLA_ERR_KEY_NOT_ON_WHITELIST;
+                if (!tesla_fault_retryable(fault)) return ESP_FAIL;
+                retry = true; break;
+            }
+            if (result != TESLA_REPLY_OK) continue;
+            if (domain == TESLA_DOMAIN_VEHICLE_SECURITY) {
+                VCSEC__FromVCSECMessage *from = vcsec__from_vcsecmessage__unpack(NULL, *reply_len, g_payload);
+                if (!from) return ESP_FAIL;
+                VCSEC__CommandStatus *status = from->sub_message_case ==
+                    VCSEC__FROM_VCSECMESSAGE__SUB_MESSAGE_COMMAND_STATUS ? from->commandstatus : NULL;
+                bool terminal = control ? status == NULL :
+                    from->sub_message_case == VCSEC__FROM_VCSECMESSAGE__SUB_MESSAGE_VEHICLE_STATUS;
+                bool failed = from->sub_message_case == VCSEC__FROM_VCSECMESSAGE__SUB_MESSAGE_NOMINAL_ERROR;
+                if (status) {
+                    if (status->operationstatus == VCSEC__OPERATION_STATUS__E__OPERATIONSTATUS_WAIT)
+                        retry = true;
+                    else if (status->operationstatus == VCSEC__OPERATION_STATUS__E__OPERATIONSTATUS_ERROR)
+                        failed = true;
+                }
+                vcsec__from_vcsecmessage__free_unpacked(from, NULL);
+                if (failed) return ESP_FAIL;
+                if (retry) break;
+                if (!terminal) continue;
+            }
+            return g_operations_cancelled ? ESP_ERR_INVALID_STATE : ESP_OK;
+        }
+        /* A control timeout may mean the physical action already happened.
+         * Never retransmit an ambiguous control command. Queries are read-only. */
+        if (!retry && control) return TESLA_ERR_COMMAND_UNCONFIRMED;
+        for (unsigned i = 0; i < 50 && !g_operations_cancelled; ++i) vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    return g_operations_cancelled ? ESP_ERR_INVALID_STATE : ESP_ERR_TIMEOUT;
+}
+
+static esp_err_t get_body_state(void)
 {
     uint8_t payload[64];
-    uint8_t buf[256];
-    uint32_t payload_len, len;
+    uint32_t size = tesla_build_info_request(payload, sizeof(payload), TESLA_INFO_GET_STATUS);
+    if (!size) return ESP_FAIL;
+    uint32_t reply_len;
+    esp_err_t result = exchange(TESLA_DOMAIN_VEHICLE_SECURITY, payload, size, false, false, &reply_len);
+    if (result != ESP_OK) return result;
+    tesla_body_state_t body = {0};
+    if (!tesla_parse_body_payload(g_payload, reply_len, &body)) return ESP_FAIL;
+    xSemaphoreTake(g_mutex, portMAX_DELAY);
+    if (!g_operations_cancelled) g_vehicle_state.body = body;
+    xSemaphoreGive(g_mutex);
+    return g_operations_cancelled ? ESP_ERR_INVALID_STATE : ESP_OK;
+}
 
-    // 注意：对于 VCSEC InformationRequest，我们不需要已建立的会话
-    // Go SDK 对此请求使用未认证方法（AuthMethodNone）
+static esp_err_t execute_rke(tesla_rke_action_t action)
+{
+    uint8_t payload[64];
+    uint32_t size = tesla_build_rke_action(payload, sizeof(payload), action), reply_len;
+    if (!size) return ESP_FAIL;
+    return exchange(TESLA_DOMAIN_VEHICLE_SECURITY, payload, size, true, true, &reply_len);
+}
 
-    // 车可能持续推送异步 VCSEC 通知；发送前先清掉旧包，避免 wait_for_response
-    // 从错误的帧边界开始累计，最终出现 rx_len 很大但始终拼不出完整消息。
-    clear_pending_notifications(pdMS_TO_TICKS(100));
-
-    // 构建信息请求（UnsignedMessage 与 InformationRequest）
-    payload_len = tesla_build_info_request(payload, sizeof(payload),
-                                            TESLA_INFO_GET_STATUS);
-
-    ESP_LOGD(TAG, "Info request payload (%lu bytes):", (unsigned long)payload_len);
-    ESP_LOG_BUFFER_HEX_LEVEL(TAG, payload, payload_len, ESP_LOG_DEBUG);
-
-    // 构建未认证的可路由消息（类似 Go SDK 使用 AuthMethodNone）
-    len = tesla_build_vcsec_message_unauthenticated(buf, sizeof(buf),
-                                                     TESLA_DOMAIN_VEHICLE_SECURITY,
-                                                     payload, payload_len,
-                                                     g_conn.routing_address);
-    if (len == 0) return ESP_FAIL;
-
-    ESP_LOGI(TAG, "Sending unauthenticated VCSEC request (%lu bytes)", (unsigned long)len);
-
-    esp_err_t ret = send_message(buf, len);
-    if (ret != ESP_OK) return ret;
-
-    if (!wait_for_response(5000)) {
-        return ESP_ERR_TIMEOUT;
-    }
-
-    // 解析响应
-    ESP_LOGD(TAG, "Received response (%lu bytes):", (unsigned long)g_conn.rx_len);
-    ESP_LOG_BUFFER_HEX_LEVEL(TAG, g_conn.rx_buffer, g_conn.rx_len > 128 ? 128 : g_conn.rx_len, ESP_LOG_DEBUG);
-
-    if (xSemaphoreTake(g_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        // 调试：解析并打印响应
-        tesla_parse_vcsec_response(g_conn.rx_buffer, g_conn.rx_len);
-
-        tesla_parse_vehicle_status(g_conn.rx_buffer, g_conn.rx_len,
-                                   &g_vehicle_state.body);
-        g_vehicle_state.valid = true;
+static esp_err_t get_drive_state(void)
+{
+    uint8_t payload[128];
+    uint32_t size = tesla_build_get_drive_state(payload, sizeof(payload)), reply_len;
+    if (!size) return ESP_FAIL;
+    esp_err_t result = exchange(TESLA_DOMAIN_INFOTAINMENT, payload, size, true, false, &reply_len);
+    if (result != ESP_OK) return result;
+    tesla_drive_state_t drive = {0};
+    if (!tesla_parse_drive_state(g_payload, reply_len, &drive)) return ESP_FAIL;
+    xSemaphoreTake(g_mutex, portMAX_DELAY);
+    if (g_vehicle_state.valid && g_vehicle_state.drive.timestamp_present && drive.timestamp_present &&
+        (drive.timestamp_seconds < g_vehicle_state.drive.timestamp_seconds ||
+         (drive.timestamp_seconds == g_vehicle_state.drive.timestamp_seconds &&
+          drive.timestamp_nanos <= g_vehicle_state.drive.timestamp_nanos))) {
         xSemaphoreGive(g_mutex);
+        return ESP_FAIL; // Repeated samples must not extend the 15s freshness lease.
     }
-
+    if (!g_operations_cancelled) { g_vehicle_state.drive = drive; g_vehicle_state.valid = true; }
+    xSemaphoreGive(g_mutex);
+    if (g_operations_cancelled) return ESP_ERR_INVALID_STATE;
     phone_notify_uart_packet_all();
-
     return ESP_OK;
 }
 
-/**
- * @brief 唤醒车辆
- * @return ESP_OK 成功，其他值失败
- * 
- * 从睡眠状态唤醒车辆
- */
-esp_err_t tesla_ble_wake_vehicle(void)
+/* Serialize callers so a control operation cannot overwrite a pending query's
+ * request ID or receive snapshot. C2/C4 cancellation never waits for this lock. */
+static bool begin_operation(void)
 {
-    uint8_t payload[64];
-    uint8_t buf[256];
-    uint32_t payload_len, len;
-
-    tesla_session_t *session = &g_conn.session[0];
-    if (!session->established) {
-        esp_err_t ret = tesla_ble_start_session(TESLA_DOMAIN_VEHICLE_SECURITY);
-        if (ret != ESP_OK) return ret;
+    if (!g_operation_mutex) return false;
+    while (!g_operations_cancelled) {
+        if (xSemaphoreTake(g_operation_mutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+            if (!g_operations_cancelled) return true;
+            xSemaphoreGive(g_operation_mutex);
+        }
     }
-
-    payload_len = tesla_build_rke_action(payload, sizeof(payload), TESLA_RKE_WAKE);
-
-    len = tesla_build_routable_message(buf, sizeof(buf),
-                                        TESLA_DOMAIN_VEHICLE_SECURITY,
-                                        payload, payload_len,
-                                        session,
-                                        g_conn.routing_address,
-                                        g_conn.public_key,
-                                        g_conn.vin,
-                                        0,
-                                        NULL);  // 无需响应解密
-    if (len == 0) return ESP_FAIL;
-
-    return send_message(buf, len);
+    return false;
 }
 
-/**
- * @brief 锁定车辆
- * @return ESP_OK 成功，ESP_ERR_INVALID_STATE 会话未建立，ESP_FAIL 失败
- */
-esp_err_t tesla_ble_lock(void)
+esp_err_t tesla_ble_add_key_request(void)
 {
-    uint8_t payload[64];
-    uint8_t buf[256];
-    uint32_t payload_len, len;
-
-    tesla_session_t *session = &g_conn.session[0];
-    if (!session->established) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    payload_len = tesla_build_rke_action(payload, sizeof(payload), TESLA_RKE_LOCK);
-
-    len = tesla_build_routable_message(buf, sizeof(buf),
-                                        TESLA_DOMAIN_VEHICLE_SECURITY,
-                                        payload, payload_len,
-                                        session,
-                                        g_conn.routing_address,
-                                        g_conn.public_key,
-                                        g_conn.vin,
-                                        0,
-                                        NULL);  // 无需响应解密
-    if (len == 0) return ESP_FAIL;
-
-    return send_message(buf, len);
+    if (!begin_operation()) return ESP_ERR_INVALID_STATE;
+    esp_err_t result = add_key_request();
+    xSemaphoreGive(g_operation_mutex); return result;
 }
 
-/**
- * @brief 解锁车辆
- * @return ESP_OK 成功，ESP_ERR_INVALID_STATE 会话未建立，ESP_FAIL 失败
- */
-esp_err_t tesla_ble_unlock(void)
+esp_err_t tesla_ble_start_session(tesla_domain_t domain)
 {
-    uint8_t payload[64];
-    uint8_t buf[256];
-    uint32_t payload_len, len;
-
-    tesla_session_t *session = &g_conn.session[0];
-    if (!session->established) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    payload_len = tesla_build_rke_action(payload, sizeof(payload), TESLA_RKE_UNLOCK);
-
-    len = tesla_build_routable_message(buf, sizeof(buf),
-                                        TESLA_DOMAIN_VEHICLE_SECURITY,
-                                        payload, payload_len,
-                                        session,
-                                        g_conn.routing_address,
-                                        g_conn.public_key,
-                                        g_conn.vin,
-                                        0,
-                                        NULL);  // 无需响应解密
-    if (len == 0) return ESP_FAIL;
-
-    return send_message(buf, len);
+    if (!begin_operation()) return ESP_ERR_INVALID_STATE;
+    esp_err_t result = start_session(domain);
+    xSemaphoreGive(g_operation_mutex); return result;
 }
 
-/**
- * @brief 获取驾驶状态（速度、功率、档位等）
- * @return ESP_OK 成功，ESP_ERR_INVALID_STATE 会话未建立，ESP_ERR_TIMEOUT 超时
- * 
- * 从 Infotainment 域获取车辆驾驶状态，包括速度、功率、档位、里程等
- */
+esp_err_t tesla_ble_get_body_state(void)
+{
+    if (!begin_operation()) return ESP_ERR_INVALID_STATE;
+    esp_err_t result = get_body_state();
+    xSemaphoreGive(g_operation_mutex); return result;
+}
+
 esp_err_t tesla_ble_get_drive_state(void)
 {
-    uint8_t payload[64];
-    uint8_t buf[512];
-    uint32_t payload_len, len;
-
-    // DriveState 需要 INFOTAINMENT 域的加密会话
-    tesla_session_t *session = &g_conn.session[1];  // 信息娱乐会话
-
-    // 如果尚未建立信息娱乐会话，先建立
-    if (!session->established) {
-        ESP_LOGI(TAG, "Establishing infotainment session for drive state...");
-        esp_err_t ret = tesla_ble_start_session(TESLA_DOMAIN_INFOTAINMENT);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to establish infotainment session: %d", ret);
-            return ret;
-        }
-    }
-
-    // 发送请求前清除所有待处理的通知
-    clear_pending_notifications(pdMS_TO_TICKS(50));
-
-    // 构建 CarServer Action 以获取 DriveState
-    payload_len = tesla_build_get_drive_state(payload, sizeof(payload));
-    if (payload_len == 0) {
-        ESP_LOGE(TAG, "Failed to build GetDriveState request");
-        return ESP_FAIL;
-    }
-
-    ESP_LOGD(TAG, "GetDriveState payload (%lu bytes):", (unsigned long)payload_len);
-    ESP_LOG_BUFFER_HEX_LEVEL(TAG, payload, payload_len, ESP_LOG_DEBUG);
-
-    // 构建到 INFOTAINMENT 域的加密可路由消息
-    // 递增此会话的计数器
-    session->counter++;
-
-    // 设置 FLAG_ENCRYPT_RESPONSE 标志以请求车辆返回加密响应
-    uint32_t flags = (1 << TESLA_FLAG_ENCRYPT_RESPONSE);
-
-    len = tesla_build_routable_message(buf, sizeof(buf),
-                                        TESLA_DOMAIN_INFOTAINMENT,
-                                        payload, payload_len,
-                                        session,
-                                        g_conn.routing_address,
-                                        g_conn.public_key,
-                                        g_conn.vin,
-                                        flags,
-                                        g_conn.last_request_id);  // 保存 request_id 用于响应解密
-    if (len == 0) {
-        ESP_LOGE(TAG, "Failed to build routable message");
-        return ESP_FAIL;
-    }
-
-    ESP_LOGD(TAG, "Sending GetDriveState request (%lu bytes)", (unsigned long)len);
-
-    // 多次尝试从信息娱乐系统获取响应
-    for (int retry = 0; retry < 3; retry++) {
-        if (g_operations_cancelled) return ESP_ERR_INVALID_STATE;
-        if (retry > 0) {
-            ESP_LOGD(TAG, "Retry %d: clearing buffer and resending...", retry);
-            // 再次清除缓冲区
-            clear_pending_notifications(pdMS_TO_TICKS(50));
-
-            // 使用新计数器重新构建消息
-            session->counter++;
-            len = tesla_build_routable_message(buf, sizeof(buf),
-                                                TESLA_DOMAIN_INFOTAINMENT,
-                                                payload, payload_len,
-                                                session,
-                                                g_conn.routing_address,
-                                                g_conn.public_key,
-                                                g_conn.vin,
-                                                flags,
-                                                g_conn.last_request_id);  // 为新消息更新 request_id
-        }
-
-        esp_err_t ret = send_message(buf, len);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to send GetDriveState request");
-            return ret;
-        }
-
-        // 使用重试逻辑等待正确的响应，跳过错误域的响应
-        int wait_attempts = 0;
-        const int max_wait_attempts = 10;  // 等待正确响应的最大次数
-        bool got_correct_response = false;
-
-        while (wait_attempts < max_wait_attempts && !got_correct_response) {
-            if (g_operations_cancelled) return ESP_ERR_INVALID_STATE;
-            wait_attempts++;
-
-            // 等待响应
-            if (!wait_for_response(3000)) {
-                ESP_LOGE(TAG, "GetDriveState timeout (attempt %d)", wait_attempts);
-                break;  // 超时，将重试发送
-            }
-
-            // 关键：在 wait_for_response 返回后立即保存消息长度
-            // 因为新的通知可能会继续向缓冲区追加数据
-            uint32_t response_len = g_conn.rx_len;
-            tesla_session_t probe = {0};
-            if (tesla_parse_session_info(g_conn.rx_buffer, response_len, &probe) ==
-                TESLA_SESSION_INFO_KEY_NOT_ON_WHITELIST) return TESLA_ERR_KEY_NOT_ON_WHITELIST;
-
-            // 记录原始响应
-            ESP_LOGD(TAG, "Received response (%lu bytes)", (unsigned long)response_len);
-
-            // 检查响应是来自 INFOTAINMENT（域 3）还是 VCSEC（域 2）
-            if (response_len >= 8) {
-                const uint8_t *p = g_conn.rx_buffer;
-                // 检查字段 6 (to_destination)
-                if (p[0] == 0x32 && p[2] == 0x08) {
-                    uint8_t to_domain = p[3];
-                    // 检查字段 7 (from_destination)
-                    if (p[4] == 0x3a && p[6] == 0x08) {
-                        uint8_t from_domain = p[7];
-                        ESP_LOGD(TAG, "Response: to_domain=%d, from_domain=%d", to_domain, from_domain);
-
-                        if (from_domain == TESLA_DOMAIN_VEHICLE_SECURITY) {
-                            ESP_LOGW(TAG, "Received VCSEC broadcast, waiting for Infotainment response...");
-                            // 清除缓冲区并继续等待正确的响应
-                            if (xSemaphoreTake(g_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                                g_conn.rx_len = 0;
-                                g_conn.rx_complete = false;
-                                xSemaphoreGive(g_mutex);
-                            }
-                            continue;  // 继续等待，不重试发送
-                        }
-                    }
-                }
-            }
-
-            // 我们收到了来自正确域的响应
-            // 使用保存的 response_len 进行解析，而不是可能已增长的 g_conn.rx_len
-            got_correct_response = true;
-
-            // 在我们拥有正确长度时立即解析和解密响应
-            uint8_t decrypted_payload[512];
-            uint32_t decrypted_len = 0;
-            tesla_fault_t fault = TESLA_FAULT_NONE;
-
-            // 注意：使用 response_len（保存的消息长度）而不是 g_conn.rx_len
-            // 因为新的通知可能已经向缓冲区追加了数据
-            if (!tesla_parse_and_decrypt_response(g_conn.rx_buffer, response_len,
-                                                   session, g_conn.vin,
-                                                   g_conn.last_request_id,
-                                                   decrypted_payload, &decrypted_len, &fault) ||
-                fault != TESLA_FAULT_NONE || decrypted_len == 0) {
-                if (fault != TESLA_FAULT_NONE) {
-                    ESP_LOGE(TAG, "Response contains fault: %d", fault);
-                }
-                ESP_LOGW(TAG, "Failed to parse/decrypt response, retrying...");
-                got_correct_response = false;  // Force retry
-                break;  // Break inner loop to retry sending
-            }
-
-            ESP_LOGD(TAG, "Decrypted payload (%lu bytes)", (unsigned long)decrypted_len);
-
-            // Parse DriveState from decrypted response
-            if (xSemaphoreTake(g_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                if (!g_operations_cancelled &&
-                    tesla_parse_drive_state(decrypted_payload, decrypted_len, &g_vehicle_state.drive)) {
-                    g_vehicle_state.valid = true;
-                    ESP_LOGD(TAG, "DriveState: gear=%d speed=%.1f power=%ld odo=%.1f",
-                             g_vehicle_state.drive.gear, g_vehicle_state.drive.speed_kmh,
-                             (long)g_vehicle_state.drive.power_kw, g_vehicle_state.drive.odometer_km);
-                    xSemaphoreGive(g_mutex);
-                    phone_notify_uart_packet_all();
-                    return ESP_OK;
-                } else {
-                    ESP_LOGW(TAG, "Failed to parse DriveState from decrypted data");
-                }
-                xSemaphoreGive(g_mutex);
-            }
-        }
-
-        if (!got_correct_response) {
-            ESP_LOGW(TAG, "Did not receive Infotainment response after %d attempts", wait_attempts);
-            continue;  // 重试发送
-        }
-
-        // 如果执行到这里，说明解析成功并在上面返回了 ESP_OK
-        // 只有在 DriveState 解析出现问题时才会到达此路径
-    }
-
-    ESP_LOGE(TAG, "Failed to get drive state after retries");
-    return ESP_FAIL;
+    if (!begin_operation()) return ESP_ERR_INVALID_STATE;
+    esp_err_t result = get_drive_state();
+    xSemaphoreGive(g_operation_mutex); return result;
 }
+
+static esp_err_t control_rke(tesla_rke_action_t action)
+{
+    if (!begin_operation()) return ESP_ERR_INVALID_STATE;
+    esp_err_t result = execute_rke(action);
+    xSemaphoreGive(g_operation_mutex); return result;
+}
+esp_err_t tesla_ble_wake_vehicle(void) { return control_rke(TESLA_RKE_WAKE); }
+esp_err_t tesla_ble_lock(void) { return control_rke(TESLA_RKE_LOCK); }
+esp_err_t tesla_ble_unlock(void) { return control_rke(TESLA_RKE_UNLOCK); }
 
 // ========== 状态打印 ==========
 

@@ -18,6 +18,9 @@ PROTOBUF_C__BEGIN_DECLS
 typedef struct CarServer__Void CarServer__Void;
 typedef struct CarServer__ShiftState CarServer__ShiftState;
 typedef struct CarServer__DriveState CarServer__DriveState;
+typedef struct CarServer__Timestamp CarServer__Timestamp;
+typedef struct CarServer__ResultReason CarServer__ResultReason;
+typedef struct CarServer__ActionStatus CarServer__ActionStatus;
 typedef struct CarServer__VehicleData CarServer__VehicleData;
 typedef struct CarServer__Response CarServer__Response;
 typedef struct CarServer__GetDriveState CarServer__GetDriveState;
@@ -28,6 +31,11 @@ typedef struct CarServer__Action CarServer__Action;
 
 /* --- enums --- */
 
+typedef enum _CarServer__OperationStatusE {
+  CAR_SERVER__OPERATION_STATUS__E__OPERATIONSTATUS_OK = 0,
+  CAR_SERVER__OPERATION_STATUS__E__OPERATIONSTATUS_ERROR = 1
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(CAR_SERVER__OPERATION_STATUS__E)
+} CarServer__OperationStatusE;
 
 /* --- messages --- */
 
@@ -78,6 +86,30 @@ struct  CarServer__ShiftState
 , CAR_SERVER__SHIFT_STATE__TYPE__NOT_SET, {0} }
 
 
+typedef enum {
+  CAR_SERVER__DRIVE_STATE__OPTIONAL_SPEED__NOT_SET = 0,
+  CAR_SERVER__DRIVE_STATE__OPTIONAL_SPEED_SPEED = 102
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(CAR_SERVER__DRIVE_STATE__OPTIONAL_SPEED__CASE)
+} CarServer__DriveState__OptionalSpeedCase;
+
+typedef enum {
+  CAR_SERVER__DRIVE_STATE__OPTIONAL_POWER__NOT_SET = 0,
+  CAR_SERVER__DRIVE_STATE__OPTIONAL_POWER_POWER = 103
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(CAR_SERVER__DRIVE_STATE__OPTIONAL_POWER__CASE)
+} CarServer__DriveState__OptionalPowerCase;
+
+typedef enum {
+  CAR_SERVER__DRIVE_STATE__OPTIONAL_ODOMETER__NOT_SET = 0,
+  CAR_SERVER__DRIVE_STATE__OPTIONAL_ODOMETER_ODOMETER_IN_HUNDREDTHS_OF_A_MILE = 105
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(CAR_SERVER__DRIVE_STATE__OPTIONAL_ODOMETER__CASE)
+} CarServer__DriveState__OptionalOdometerCase;
+
+typedef enum {
+  CAR_SERVER__DRIVE_STATE__OPTIONAL_SPEED_FLOAT__NOT_SET = 0,
+  CAR_SERVER__DRIVE_STATE__OPTIONAL_SPEED_FLOAT_SPEED_FLOAT = 106
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(CAR_SERVER__DRIVE_STATE__OPTIONAL_SPEED_FLOAT__CASE)
+} CarServer__DriveState__OptionalSpeedFloatCase;
+
 /*
  * 行驶状态（vehicle.proto DriveState）。仅定义当前解析的字段；完整定义含 timestamp、active_route_* 等
  */
@@ -88,26 +120,71 @@ struct  CarServer__DriveState
    * 档位状态
    */
   CarServer__ShiftState *shift_state;
-  /*
-   * 车速（原始整型，部分固件用 speed_float）
-   */
-  uint32_t speed;
-  /*
-   * 功率 kW，正为驱动、负为回收
-   */
-  int32_t power;
-  /*
-   * 里程，百分之一英里
-   */
-  int32_t odometer_in_hundredths_of_a_mile;
-  /*
-   * 车速浮点 km/h
-   */
-  float speed_float;
+  CarServer__Timestamp *timestamp;
+  CarServer__DriveState__OptionalSpeedCase optional_speed_case;
+  union {
+    uint32_t speed;
+  };
+  CarServer__DriveState__OptionalPowerCase optional_power_case;
+  union {
+    int32_t power;
+  };
+  CarServer__DriveState__OptionalOdometerCase optional_odometer_case;
+  union {
+    int32_t odometer_in_hundredths_of_a_mile;
+  };
+  CarServer__DriveState__OptionalSpeedFloatCase optional_speed_float_case;
+  union {
+    float speed_float;
+  };
 };
 #define CAR_SERVER__DRIVE_STATE__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&car_server__drive_state__descriptor) \
-, NULL, 0, 0, 0, 0 }
+, NULL, NULL, CAR_SERVER__DRIVE_STATE__OPTIONAL_SPEED__NOT_SET, {0}, CAR_SERVER__DRIVE_STATE__OPTIONAL_POWER__NOT_SET, {0}, CAR_SERVER__DRIVE_STATE__OPTIONAL_ODOMETER__NOT_SET, {0}, CAR_SERVER__DRIVE_STATE__OPTIONAL_SPEED_FLOAT__NOT_SET, {0} }
+
+
+/*
+ * Same wire fields as google.protobuf.Timestamp; avoids a runtime dependency.
+ */
+struct  CarServer__Timestamp
+{
+  ProtobufCMessage base;
+  int64_t seconds;
+  int32_t nanos;
+};
+#define CAR_SERVER__TIMESTAMP__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&car_server__timestamp__descriptor) \
+, 0, 0 }
+
+
+typedef enum {
+  CAR_SERVER__RESULT_REASON__REASON__NOT_SET = 0,
+  CAR_SERVER__RESULT_REASON__REASON_PLAIN_TEXT = 1
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(CAR_SERVER__RESULT_REASON__REASON__CASE)
+} CarServer__ResultReason__ReasonCase;
+
+struct  CarServer__ResultReason
+{
+  ProtobufCMessage base;
+  CarServer__ResultReason__ReasonCase reason_case;
+  union {
+    char *plain_text;
+  };
+};
+#define CAR_SERVER__RESULT_REASON__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&car_server__result_reason__descriptor) \
+, CAR_SERVER__RESULT_REASON__REASON__NOT_SET, {0} }
+
+
+struct  CarServer__ActionStatus
+{
+  ProtobufCMessage base;
+  CarServer__OperationStatusE result;
+  CarServer__ResultReason *result_reason;
+};
+#define CAR_SERVER__ACTION_STATUS__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&car_server__action_status__descriptor) \
+, CAR_SERVER__OPERATION_STATUS__E__OPERATIONSTATUS_OK, NULL }
 
 
 /*
@@ -129,11 +206,12 @@ struct  CarServer__VehicleData
 struct  CarServer__Response
 {
   ProtobufCMessage base;
+  CarServer__ActionStatus *actionstatus;
   CarServer__VehicleData *vehicledata;
 };
 #define CAR_SERVER__RESPONSE__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&car_server__response__descriptor) \
-, NULL }
+, NULL, NULL }
 
 
 /*
@@ -243,6 +321,63 @@ CarServer__DriveState *
                       const uint8_t       *data);
 void   car_server__drive_state__free_unpacked
                      (CarServer__DriveState *message,
+                      ProtobufCAllocator *allocator);
+/* CarServer__Timestamp methods */
+void   car_server__timestamp__init
+                     (CarServer__Timestamp         *message);
+size_t car_server__timestamp__get_packed_size
+                     (const CarServer__Timestamp   *message);
+size_t car_server__timestamp__pack
+                     (const CarServer__Timestamp   *message,
+                      uint8_t             *out);
+size_t car_server__timestamp__pack_to_buffer
+                     (const CarServer__Timestamp   *message,
+                      ProtobufCBuffer     *buffer);
+CarServer__Timestamp *
+       car_server__timestamp__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   car_server__timestamp__free_unpacked
+                     (CarServer__Timestamp *message,
+                      ProtobufCAllocator *allocator);
+/* CarServer__ResultReason methods */
+void   car_server__result_reason__init
+                     (CarServer__ResultReason         *message);
+size_t car_server__result_reason__get_packed_size
+                     (const CarServer__ResultReason   *message);
+size_t car_server__result_reason__pack
+                     (const CarServer__ResultReason   *message,
+                      uint8_t             *out);
+size_t car_server__result_reason__pack_to_buffer
+                     (const CarServer__ResultReason   *message,
+                      ProtobufCBuffer     *buffer);
+CarServer__ResultReason *
+       car_server__result_reason__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   car_server__result_reason__free_unpacked
+                     (CarServer__ResultReason *message,
+                      ProtobufCAllocator *allocator);
+/* CarServer__ActionStatus methods */
+void   car_server__action_status__init
+                     (CarServer__ActionStatus         *message);
+size_t car_server__action_status__get_packed_size
+                     (const CarServer__ActionStatus   *message);
+size_t car_server__action_status__pack
+                     (const CarServer__ActionStatus   *message,
+                      uint8_t             *out);
+size_t car_server__action_status__pack_to_buffer
+                     (const CarServer__ActionStatus   *message,
+                      ProtobufCBuffer     *buffer);
+CarServer__ActionStatus *
+       car_server__action_status__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   car_server__action_status__free_unpacked
+                     (CarServer__ActionStatus *message,
                       ProtobufCAllocator *allocator);
 /* CarServer__VehicleData methods */
 void   car_server__vehicle_data__init
@@ -369,6 +504,15 @@ typedef void (*CarServer__ShiftState_Closure)
 typedef void (*CarServer__DriveState_Closure)
                  (const CarServer__DriveState *message,
                   void *closure_data);
+typedef void (*CarServer__Timestamp_Closure)
+                 (const CarServer__Timestamp *message,
+                  void *closure_data);
+typedef void (*CarServer__ResultReason_Closure)
+                 (const CarServer__ResultReason *message,
+                  void *closure_data);
+typedef void (*CarServer__ActionStatus_Closure)
+                 (const CarServer__ActionStatus *message,
+                  void *closure_data);
 typedef void (*CarServer__VehicleData_Closure)
                  (const CarServer__VehicleData *message,
                   void *closure_data);
@@ -393,9 +537,13 @@ typedef void (*CarServer__Action_Closure)
 
 /* --- descriptors --- */
 
+extern const ProtobufCEnumDescriptor    car_server__operation_status__e__descriptor;
 extern const ProtobufCMessageDescriptor car_server__void__descriptor;
 extern const ProtobufCMessageDescriptor car_server__shift_state__descriptor;
 extern const ProtobufCMessageDescriptor car_server__drive_state__descriptor;
+extern const ProtobufCMessageDescriptor car_server__timestamp__descriptor;
+extern const ProtobufCMessageDescriptor car_server__result_reason__descriptor;
+extern const ProtobufCMessageDescriptor car_server__action_status__descriptor;
 extern const ProtobufCMessageDescriptor car_server__vehicle_data__descriptor;
 extern const ProtobufCMessageDescriptor car_server__response__descriptor;
 extern const ProtobufCMessageDescriptor car_server__get_drive_state__descriptor;

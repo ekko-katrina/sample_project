@@ -11,10 +11,23 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "tesla_ble.h"
+#include "tesla_transport.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct {
+    tesla_domain_t domain;
+    uint8_t uuid[16];
+    uint8_t address[16];
+    uint8_t request_id[17];
+    bool authenticated;
+    tesla_replay_window_t replay;
+} tesla_request_t;
+
+bool tesla_request_capture(const uint8_t *wire, size_t len, tesla_request_t *request);
+bool tesla_response_matches(const uint8_t *wire, size_t len, const tesla_request_t *request);
 
 // ========== 协议标签（来自 signatures.proto）==========
 
@@ -67,8 +80,32 @@ typedef enum {
     TESLA_FAULT_WRONG_VIN = 12,              // 错误的 VIN
     TESLA_FAULT_BAD_PARAMETER = 13,          // 错误的参数
     TESLA_FAULT_KEYCHAIN_FULL = 14,          // 密钥链已满
-    TESLA_FAULT_INCORRECT_EPOCH = 15         // 错误的时期
+    TESLA_FAULT_INCORRECT_EPOCH = 15,
+    TESLA_FAULT_IV_LENGTH = 16,
+    TESLA_FAULT_TIME_EXPIRED = 17,
+    TESLA_FAULT_NOT_PROVISIONED = 18,
+    TESLA_FAULT_METADATA = 19,
+    TESLA_FAULT_TTL_TOO_LONG = 20,
+    TESLA_FAULT_REMOTE_ACCESS_DISABLED = 21,
+    TESLA_FAULT_SERVICE_ACCESS_DISABLED = 22,
+    TESLA_FAULT_ACCOUNT_REQUIRED = 23,
+    TESLA_FAULT_REQUEST_MTU = 24,
+    TESLA_FAULT_RESPONSE_MTU = 25,
+    TESLA_FAULT_REPEATED_COUNTER = 26,
+    TESLA_FAULT_INVALID_KEY_HANDLE = 27,
+    TESLA_FAULT_RESPONSE_ENCRYPTION_REQUIRED = 28
 } tesla_fault_t;
+bool tesla_fault_retryable(tesla_fault_t fault);
+typedef enum {
+    TESLA_REPLY_INVALID, TESLA_REPLY_OK, TESLA_REPLY_FAULT,
+    TESLA_REPLY_SESSION, TESLA_REPLY_DUPLICATE
+} tesla_reply_result_t;
+tesla_reply_result_t tesla_decode_response(const uint8_t *wire, size_t len,
+    const tesla_session_t *session, const char *vin, tesla_request_t *request,
+    uint8_t *payload, size_t capacity, uint32_t *payload_len, tesla_fault_t *fault);
+uint32_t tesla_build_response_metadata(uint8_t *buf, tesla_domain_t domain,
+    const char *vin, uint32_t counter, uint32_t flags, const uint8_t *request_id,
+    uint32_t request_id_len, uint32_t fault);
 
 // ========== VCSEC 消息类型 ==========
 
@@ -239,8 +276,15 @@ typedef enum {
     TESLA_SESSION_INFO_KEY_NOT_ON_WHITELIST,
 } tesla_session_info_result_t;
 
+/* Verify HMAC before installing or refreshing any session state. */
+tesla_session_info_result_t tesla_verify_session_info(
+    const uint8_t *wire, size_t len, const uint8_t *private_key, const char *vin,
+    const tesla_request_t *request, uint32_t local_sec, tesla_session_t *session);
+bool tesla_crypto_hmac_sha256(const uint8_t *key, size_t key_len,
+    const uint8_t *data, size_t len, uint8_t output[32]);
+
 /**
- * @brief 解析会话信息响应
+ * @brief 结构解码会话信息；本函数不认证，业务必须调用 tesla_verify_session_info
  * @param data 响应数据
  * @param len 数据长度
  * @param session 输出会话信息
@@ -263,27 +307,7 @@ bool tesla_parse_vehicle_status(
     uint32_t len,
     tesla_body_state_t *state);
 
-/**
- * @brief 解析并解密加密的可路由消息响应
- * @param data 原始响应数据
- * @param len 响应数据长度
- * @param session 包含解密密钥的会话
- * @param vin 车辆 VIN（用于元数据）
- * @param request_id 原始请求的请求 ID（17 字节：签名类型 + GCM 标签）
- * @param plaintext 解密后负载的输出缓冲区
- * @param plaintext_len 输出解密数据长度
- * @param fault 输出故障码（如有错误）
- * @return true 成功解密，false 失败
- */
-bool tesla_parse_and_decrypt_response(
-    const uint8_t *data,
-    uint32_t len,
-    const tesla_session_t *session,
-    const char *vin,
-    const uint8_t *request_id,
-    uint8_t *plaintext,
-    uint32_t *plaintext_len,
-    tesla_fault_t *fault);
+bool tesla_parse_body_payload(const uint8_t *data, uint32_t len, tesla_body_state_t *state);
 
 /**
  * @brief 从 CarServer 响应解析驾驶状态
