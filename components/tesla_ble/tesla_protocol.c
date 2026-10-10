@@ -532,36 +532,47 @@ uint32_t tesla_build_vcsec_message_unauthenticated(
  * @param session 输出会话信息
  * @return true 成功，false 失败
  */
-bool tesla_parse_session_info(
+tesla_session_info_result_t tesla_parse_session_info(
     const uint8_t *data,
     uint32_t len,
     tesla_session_t *session)
 {
-    if (len < 2) return false;
+    if (!data || !session || len < 2) return TESLA_SESSION_INFO_INVALID;
 
     UniversalMessage__RoutableMessage *rmsg = universal_message__routable_message__unpack(NULL, len, data);
-    if (!rmsg) return false;
+    if (!rmsg) return TESLA_SESSION_INFO_INVALID;
 
-    bool ok = false;
+    tesla_session_info_result_t result = TESLA_SESSION_INFO_INVALID;
     if (rmsg->payload_case == UNIVERSAL_MESSAGE__ROUTABLE_MESSAGE__PAYLOAD_SESSION_INFO &&
         rmsg->session_info.data && rmsg->session_info.len > 0) {
         Signatures__SessionInfo *info = signatures__session_info__unpack(NULL,
             rmsg->session_info.len, rmsg->session_info.data);
         if (info) {
-            session->counter = info->counter;
-            session->clock_time = info->clock_time;
-            if (info->publickey.len <= 65) {
-                memcpy(session->vehicle_public_key, info->publickey.data, info->publickey.len);
-            }
-            if (info->epoch.len <= 16) {
-                memcpy(session->epoch, info->epoch.data, info->epoch.len);
+            unsigned int prefix = (info->publickey.data && info->publickey.len > 0)
+                ? info->publickey.data[0] : 0;
+            ESP_LOGI(TAG, "SessionInfo: status=%d, public_key_len=%u, public_key_prefix=0x%02x, epoch_len=%u",
+                     (int)info->status, (unsigned int)info->publickey.len,
+                     prefix, (unsigned int)info->epoch.len);
+            if (info->status == SIGNATURES__SESSION__INFO__STATUS__SESSION_INFO_STATUS_KEY_NOT_ON_WHITELIST) {
+                ESP_LOGE(TAG, "Vehicle rejected key: KEY_NOT_ON_WHITELIST; authorize this device key on the vehicle");
+                result = TESLA_SESSION_INFO_KEY_NOT_ON_WHITELIST;
+            } else if (info->status != SIGNATURES__SESSION__INFO__STATUS__SESSION_INFO_STATUS_OK) {
+                ESP_LOGE(TAG, "Vehicle returned unexpected session status: %d", (int)info->status);
+            } else if (!info->publickey.data || info->publickey.len != 65 || prefix != 0x04 ||
+                       !info->epoch.data || info->epoch.len != 16) {
+                ESP_LOGE(TAG, "Invalid SessionInfo public key or epoch; refusing ECDH");
+            } else {
+                session->counter = info->counter;
+                session->clock_time = info->clock_time;
+                memcpy(session->vehicle_public_key, info->publickey.data, 65);
+                memcpy(session->epoch, info->epoch.data, 16);
+                result = TESLA_SESSION_INFO_OK;
             }
             signatures__session_info__free_unpacked(info, NULL);
-            ok = true;
         }
     }
     universal_message__routable_message__free_unpacked(rmsg, NULL);
-    return ok;
+    return result;
 }
 
 bool tesla_parse_vehicle_status(

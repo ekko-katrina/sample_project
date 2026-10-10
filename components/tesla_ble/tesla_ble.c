@@ -1438,7 +1438,14 @@ esp_err_t tesla_ble_start_session(tesla_domain_t domain)
         }
 
         // 尝试解析会话信息
-        if (tesla_parse_session_info(g_conn.rx_buffer, g_conn.rx_len, session)) {
+        tesla_session_info_result_t parsed =
+            tesla_parse_session_info(g_conn.rx_buffer, g_conn.rx_len, session);
+        if (parsed == TESLA_SESSION_INFO_KEY_NOT_ON_WHITELIST) {
+            session->established = false;
+            ESP_LOGE(TAG, "Session rejected: device key is not authorized on vehicle");
+            return TESLA_ERR_KEY_NOT_ON_WHITELIST;
+        }
+        if (parsed == TESLA_SESSION_INFO_OK) {
             // 成功！计算 ECDH 共享密钥
             if (!tesla_crypto_ecdh(g_conn.private_key, session->vehicle_public_key,
                                    session->shared_secret)) {

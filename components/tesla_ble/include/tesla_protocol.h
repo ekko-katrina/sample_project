@@ -233,14 +233,20 @@ uint32_t tesla_build_vcsec_message_unauthenticated(
 
 // ========== 消息解析器 ==========
 
+typedef enum {
+    TESLA_SESSION_INFO_INVALID = 0,
+    TESLA_SESSION_INFO_OK,
+    TESLA_SESSION_INFO_KEY_NOT_ON_WHITELIST,
+} tesla_session_info_result_t;
+
 /**
  * @brief 解析会话信息响应
  * @param data 响应数据
  * @param len 数据长度
  * @param session 输出会话信息
- * @return true 成功，false 失败
+ * @return 解析结果，区分有效会话、无效响应与车辆拒绝钥匙
  */
-bool tesla_parse_session_info(
+tesla_session_info_result_t tesla_parse_session_info(
     const uint8_t *data,
     uint32_t len,
     tesla_session_t *session);

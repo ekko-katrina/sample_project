@@ -383,6 +383,8 @@ void tesla_ble_disconnect(void);
  * @param domain 目标域 (VCSEC 或 Infotainment)
  * @return ESP_OK 成功，其他值失败
  */
+/* Vehicle explicitly rejected the current device key during session setup. */
+#define TESLA_ERR_KEY_NOT_ON_WHITELIST ((esp_err_t)0x7501)
 esp_err_t tesla_ble_start_session(tesla_domain_t domain);
 
 /**
