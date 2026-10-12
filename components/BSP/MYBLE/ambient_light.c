@@ -6,6 +6,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "led.h"
+#include "esp_log.h"
 #endif
 
 esp_err_t ambient_light_load(tmy06_ambient_settings_t *settings)
@@ -57,7 +58,14 @@ static void ambient_light_task(void *arg)
                 changed |= output[i] != previous[i];
                 previous[i] = output[i];
             }
-            if (changed) led_set_rgb(output[0], output[1], output[2]);
+            if (changed) {
+                esp_err_t err = led_set_rgb(output[0], output[1], output[2]);
+                if (err != ESP_OK) {
+                    ESP_LOGE("AMBIENT-LIGHT", "Board preview stopped: %s; BLE settings remain available", esp_err_to_name(err));
+                    vTaskDelete(NULL);
+                    return;
+                }
+            }
         }
         phase = (phase + 1U) % 100U;
         vTaskDelay(pdMS_TO_TICKS(30));
@@ -69,7 +77,8 @@ esp_err_t ambient_light_start(void)
 {
 #if CONFIG_TMY06_AMBIENT_BOARD_PREVIEW
     if (ble_sim_profile_info(ble_sim_get_active_profile())->has_ambient_light) {
-        led_init();
+        esp_err_t err = led_init_checked();
+        if (err != ESP_OK) return err;
         if (xTaskCreate(ambient_light_task, "y06_light", 3072, NULL, 3, NULL) != pdPASS) return ESP_ERR_NO_MEM;
     }
 #endif

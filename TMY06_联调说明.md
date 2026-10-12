@@ -140,3 +140,9 @@ idf.py -p COMx flash monitor
 灯效和两套颜色保存到 NVS `y06_light/settings_v1`，两种 Y06 档位共用配置。设置完成后可断开 APP，用控制台 `mode` 切换制冷/制热验证自动切色，重启后确认配置仍保留。
 
 模拟器使用现有 GPIO48 板载 WS2812 预览常亮/呼吸，约 3 秒一个呼吸周期。`CONFIG_TMY06_AMBIENT_BOARD_PREVIEW` 可关闭板载预览；接实际冰箱灯控时，需要将 RGB 输出适配到真实硬件，不能直接假定外接灯也使用 GPIO48。
+
+### 板载 RGB 预览超时
+
+如果日志在 `广播已启动` 后出现 `rmt_tx_wait_all_done: flush timeout`，检查是否仍在使用旧版 LED 驱动的 1ms 等待和 `ESP_ERROR_CHECK`。新版驱动将发送等待改为 100ms，并返回错误；板载预览初始化失败时，主程序记录警告后继续启动 BLE、控制台和其他服务。运行中发送失败则停止预览任务，避免重复排队或修改仍被 RMT 引用的数据。
+
+这类错误不会清除 NVS 中的灯效和颜色。若需单独排查板载 RGB，可在 `menuconfig -> TMY06 firmware settings` 关闭 `Preview Y06 ambient light on onboard RGB LED (GPIO48)`，重新编译烧录后继续验证 BLE 设置与回读。

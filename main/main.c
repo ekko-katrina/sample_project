@@ -23,7 +23,10 @@ void app_main(void)
 
     ble_sim_profile_t profile = ble_profile_load();
     ble_init(profile);
-    ESP_ERROR_CHECK(ambient_light_start());
+    err = ambient_light_start();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Ambient board preview unavailable: %s; continuing BLE and console startup", esp_err_to_name(err));
+    }
     ESP_ERROR_CHECK(tesla_link_start());
     ESP_ERROR_CHECK(wifi_provisioning_start());
     err = mqtt_service_init();
