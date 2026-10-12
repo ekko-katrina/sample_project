@@ -1,4 +1,6 @@
 #include "myble.h"
+#include "ambient_light.h"
+#include "nvs.h"
 #include "sdkconfig.h"
 #include "wifi_provisioning.h"
 #include "tesla_link.h"
@@ -45,8 +47,8 @@ static uint16_t g_tx_value_handle;
 static phone_connection_t g_connections[MAX_PHONE_CONNECTIONS];
 static portMUX_TYPE g_state_lock = portMUX_INITIALIZER_UNLOCKED;
 static SemaphoreHandle_t g_notify_mutex;
-static tmy05_state_t g_fridge_state;
-static ble_sim_profile_t g_active_profile = BLE_SIM_PROFILE_LEGACY_Y05;
+static tmy06_state_t g_fridge_state;
+static ble_sim_profile_t g_active_profile = BLE_SIM_PROFILE_LEGACY_Y06;
 static const ble_sim_profile_info_t *g_profile_info;
 static ble_ota_start_handler_t g_ota_start_handler;
 static ble_state_change_handler_t g_state_change_handler;
@@ -117,17 +119,17 @@ static bool has_free_connection_slot(void)
     return connection_count() < MAX_PHONE_CONNECTIONS;
 }
 
-static tmy05_state_t get_state_snapshot(void)
+static tmy06_state_t get_state_snapshot(void)
 {
-    tmy05_state_t snapshot;
+    tmy06_state_t snapshot;
     portENTER_CRITICAL(&g_state_lock);
     snapshot = g_fridge_state;
     portEXIT_CRITICAL(&g_state_lock);
     return snapshot;
 }
 
-static void report_state_change(const tmy05_state_t *before,
-                                const tmy05_state_t *after)
+static void report_state_change(const tmy06_state_t *before,
+                                const tmy06_state_t *after)
 {
     if (g_state_change_handler != NULL &&
         memcmp(before, after, sizeof(*before)) != 0) {
@@ -146,42 +148,42 @@ static const char *fault_text(uint8_t fault_code)
     }
 
     switch (fault_code) {
-    case TMY05_FAULT_NONE:
+    case TMY06_FAULT_NONE:
         return "无故障";
-    case TMY05_FAULT_NTC_SHORT:
+    case TMY06_FAULT_NTC_SHORT:
         return "NTC短路";
-    case TMY05_FAULT_NTC_OPEN:
+    case TMY06_FAULT_NTC_OPEN:
         return "NTC开路";
-    case TMY05_FAULT_HIGH_TEMPERATURE:
+    case TMY06_FAULT_HIGH_TEMPERATURE:
         return "75度高温保护";
     default:
         return "未知故障";
     }
 }
 
-static const char *mode_text(tmy05_mode_t mode)
+static const char *mode_text(tmy06_mode_t mode)
 {
     switch (mode) {
-    case TMY05_MODE_COOLING:
+    case TMY06_MODE_COOLING:
         return "冷藏/制冷";
-    case TMY05_MODE_MAX:
+    case TMY06_MODE_MAX:
         return "MAX";
-    case TMY05_MODE_ECO:
+    case TMY06_MODE_ECO:
         return "ECO";
-    case TMY05_MODE_HEATING:
+    case TMY06_MODE_HEATING:
         return "制热";
     default:
         return "未知";
     }
 }
 
-static void log_state_summary(const tmy05_state_t *state)
+static void log_state_summary(const tmy06_state_t *state)
 {
     if (g_profile_info->has_voltage) {
         ESP_LOGI(TAG,
                  "当前状态：%s，%s，%s，目标温度=%d，实际温度=%d，电压=%u.%02uV，故障=%s(%u)",
-                 state->power == TMY05_POWER_ON ? "开机" : "关机",
-                 state->unit == TMY05_UNIT_FAHRENHEIT ? "华氏度" : "摄氏度",
+                 state->power == TMY06_POWER_ON ? "开机" : "关机",
+                 state->unit == TMY06_UNIT_FAHRENHEIT ? "华氏度" : "摄氏度",
                  mode_text(state->mode), state->target_temperature,
                  state->actual_temperature,
                  state->actual_voltage_centi_volts / 100U,
@@ -190,43 +192,49 @@ static void log_state_summary(const tmy05_state_t *state)
     } else {
         ESP_LOGI(TAG,
                  "当前状态：%s，%s，%s，童锁%s，目标温度=%d，实际温度=%d，故障=%s(%u)",
-                 state->power == TMY05_POWER_ON ? "开机" : "关机",
-                 state->unit == TMY05_UNIT_FAHRENHEIT ? "华氏度" : "摄氏度",
+                 state->power == TMY06_POWER_ON ? "开机" : "关机",
+                 state->unit == TMY06_UNIT_FAHRENHEIT ? "华氏度" : "摄氏度",
                  mode_text(state->mode),
-                 state->child_lock == TMY05_CHILD_LOCK_ON ? "上锁" : "解锁",
+                 state->child_lock == TMY06_CHILD_LOCK_ON ? "上锁" : "解锁",
                  state->target_temperature, state->actual_temperature,
                  fault_text(state->fault_code), state->fault_code);
     }
 }
 
-static void log_app_command(tmy05_command_t command, const tmy05_state_t *state)
+static void log_app_command(tmy06_command_t command, const tmy06_state_t *state)
 {
     switch (command) {
-    case TMY05_COMMAND_GET_STATE:
+    case TMY06_COMMAND_GET_STATE:
         ESP_LOGI(TAG, "收到App命令：获取冰箱全状态");
         break;
-    case TMY05_COMMAND_SET_POWER:
+    case TMY06_COMMAND_SET_POWER:
         ESP_LOGI(TAG,
                  "收到App命令：%s",
-                 state->power == TMY05_POWER_ON ? "开机" : "关机");
+                 state->power == TMY06_POWER_ON ? "开机" : "关机");
         break;
-    case TMY05_COMMAND_SET_MODE:
+    case TMY06_COMMAND_SET_MODE:
         ESP_LOGI(TAG,
                  "收到App命令：切换为%s模式",
                  mode_text(state->mode));
         break;
-    case TMY05_COMMAND_SET_UNIT:
+    case TMY06_COMMAND_SET_UNIT:
         ESP_LOGI(TAG,
                  "收到App命令：温度单位改为%s",
-                 state->unit == TMY05_UNIT_FAHRENHEIT ? "华氏度" : "摄氏度");
+                 state->unit == TMY06_UNIT_FAHRENHEIT ? "华氏度" : "摄氏度");
         break;
-    case TMY05_COMMAND_SET_TARGET_TEMPERATURE:
+    case TMY06_COMMAND_SET_TARGET_TEMPERATURE:
         ESP_LOGI(TAG, "收到App命令：目标温度改为%d", state->target_temperature);
         break;
-    case TMY05_COMMAND_SET_CHILD_LOCK:
+    case TMY06_COMMAND_SET_CHILD_LOCK:
         ESP_LOGI(TAG,
                  "收到App命令：童锁%s",
-                 state->child_lock == TMY05_CHILD_LOCK_ON ? "上锁" : "解锁");
+                 state->child_lock == TMY06_CHILD_LOCK_ON ? "上锁" : "解锁");
+        break;
+    case TMY06_COMMAND_SET_AMBIENT_LIGHT:
+        ESP_LOGI(TAG, "氛围灯已保存：灯效=%s，制冷=#%02X%02X%02X，制热=#%02X%02X%02X",
+                 state->ambient.effect ? "呼吸" : "常亮",
+                 state->ambient.colors[0][0], state->ambient.colors[0][1], state->ambient.colors[0][2],
+                 state->ambient.colors[1][0], state->ambient.colors[1][1], state->ambient.colors[1][2]);
         break;
     default:
         ESP_LOGI(TAG, "收到App命令：0x%02X", (unsigned int)command);
@@ -239,7 +247,7 @@ static void log_app_command(tmy05_command_t command, const tmy05_state_t *state)
 static int append_status_to_mbuf(struct os_mbuf *om)
 {
     uint8_t frame[FRIDGE_MAX_STATUS_FRAME_SIZE];
-    tmy05_state_t snapshot = get_state_snapshot();
+    tmy06_state_t snapshot = get_state_snapshot();
     size_t length = fridge_protocol_build_status_frame(g_active_profile,
                                                        &snapshot,
                                                        frame,
@@ -326,7 +334,7 @@ static size_t notify_subscriber_count(void)
 static void notify_all_subscribers(const char *reason, bool proactive)
 {
     uint8_t frame[FRIDGE_MAX_STATUS_FRAME_SIZE];
-    tmy05_state_t snapshot = get_state_snapshot();
+    tmy06_state_t snapshot = get_state_snapshot();
     size_t length = fridge_protocol_build_status_frame(g_active_profile,
                                                        &snapshot,
                                                        frame,
@@ -347,10 +355,10 @@ static void notify_all_subscribers(const char *reason, bool proactive)
     }
 }
 
-void ble_ota_report_status(tmy05_ota_status_t status, uint8_t information)
+void ble_ota_report_status(tmy06_ota_status_t status, uint8_t information)
 {
-    uint8_t frame[TMY05_OTA_STATUS_FRAME_SIZE];
-    size_t length = tmy05_protocol_build_ota_status_frame(status,
+    uint8_t frame[TMY06_OTA_STATUS_FRAME_SIZE];
+    size_t length = tmy06_protocol_build_ota_status_frame(status,
                                                           information,
                                                           frame,
                                                           sizeof(frame));
@@ -404,9 +412,9 @@ static void get_firmware_version(uint8_t *major,
     }
 
     ESP_LOGW(TAG, "无法解析应用版本 '%s'，使用 Kconfig 版本", app_desc->version);
-    *major = CONFIG_TMY05_FW_VERSION_MAJOR;
-    *minor = CONFIG_TMY05_FW_VERSION_MINOR;
-    *patch = CONFIG_TMY05_FW_VERSION_PATCH;
+    *major = CONFIG_TMY06_FW_VERSION_MAJOR;
+    *minor = CONFIG_TMY06_FW_VERSION_MINOR;
+    *patch = CONFIG_TMY06_FW_VERSION_PATCH;
 }
 
 static bool process_ota_frame(phone_connection_t *connection,
@@ -417,19 +425,19 @@ static bool process_ota_frame(phone_connection_t *connection,
         return false;
     }
 
-    tmy05_ota_request_t request;
-    if (!tmy05_protocol_parse_ota_request(frame, length, &request)) {
+    tmy06_ota_request_t request;
+    if (!tmy06_protocol_parse_ota_request(frame, length, &request)) {
         return false;
     }
 
-    if (request.command == TMY05_OTA_COMMAND_QUERY_VERSION) {
+    if (request.command == TMY06_OTA_COMMAND_QUERY_VERSION) {
         uint8_t major;
         uint8_t minor;
         uint8_t patch;
         get_firmware_version(&major, &minor, &patch);
 
-        uint8_t response[TMY05_OTA_VERSION_FRAME_SIZE];
-        size_t response_length = tmy05_protocol_build_ota_version_frame(
+        uint8_t response[TMY06_OTA_VERSION_FRAME_SIZE];
+        size_t response_length = tmy06_protocol_build_ota_version_frame(
             g_profile_info->model_id,
             major,
             minor,
@@ -446,13 +454,13 @@ static bool process_ota_frame(phone_connection_t *connection,
              request.model_id, request.major, request.minor, request.patch);
     if (request.model_id != g_profile_info->model_id) {
         ESP_LOGE(TAG, "OTA 目标型号与当前设备不一致");
-        ble_ota_report_status(TMY05_OTA_STATUS_ERROR,
-                              TMY05_OTA_ERROR_VERSION);
+        ble_ota_report_status(TMY06_OTA_STATUS_ERROR,
+                              TMY06_OTA_ERROR_VERSION);
         return true;
     }
     if (g_ota_start_handler == NULL || !g_ota_start_handler(&request)) {
-        ble_ota_report_status(TMY05_OTA_STATUS_ERROR,
-                              TMY05_OTA_ERROR_UNKNOWN);
+        ble_ota_report_status(TMY06_OTA_STATUS_ERROR,
+                              TMY06_OTA_ERROR_UNKNOWN);
     }
     return true;
 }
@@ -461,9 +469,9 @@ static void process_complete_app_frame(phone_connection_t *connection,
                                        const uint8_t *frame,
                                        size_t length)
 {
-    tmy05_command_t command;
-    tmy05_state_t previous;
-    tmy05_state_t snapshot;
+    tmy06_command_t command;
+    tmy06_state_t previous;
+    tmy06_state_t snapshot;
     bool accepted;
 
     if (tesla_link_handle_ble_frame(connection->handle, frame, length)) {
@@ -480,17 +488,29 @@ static void process_complete_app_frame(phone_connection_t *connection,
         return;
     }
 
-    portENTER_CRITICAL(&g_state_lock);
-    previous = g_fridge_state;
+    previous = get_state_snapshot();
     snapshot = previous;
     accepted = fridge_protocol_apply_app_frame(g_active_profile,
                                                frame,
                                                length,
                                                &snapshot,
                                                &command);
-    if (accepted) {
-        g_fridge_state = snapshot;
+    if (accepted && command == TMY06_COMMAND_SET_AMBIENT_LIGHT &&
+        memcmp(&previous.ambient, &snapshot.ambient, sizeof(snapshot.ambient)) != 0) {
+        esp_err_t err = ambient_light_save(&snapshot.ambient);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "氛围灯保存失败：%s", esp_err_to_name(err));
+            notify_all_subscribers("氛围灯保存失败，回传原设置", false);
+            return;
+        }
     }
+    // Reapply against the latest refrigerator state after the NVS write.
+    // Flash writes must never run inside the state critical section.
+    portENTER_CRITICAL(&g_state_lock);
+    previous = g_fridge_state;
+    snapshot = previous;
+    accepted = accepted && fridge_protocol_apply_app_frame(g_active_profile, frame, length, &snapshot, &command);
+    if (accepted) g_fridge_state = snapshot;
     portEXIT_CRITICAL(&g_state_lock);
 
     if (!accepted) {
@@ -501,7 +521,7 @@ static void process_complete_app_frame(phone_connection_t *connection,
     report_state_change(&previous, &snapshot);
 
     log_app_command(command, &snapshot);
-    if (command == TMY05_COMMAND_GET_STATE) {
+    if (command == TMY06_COMMAND_GET_STATE) {
         notify_all_subscribers("App获取全状态命令", false);
     } else {
         notify_all_subscribers("收到App控制命令", true);
@@ -540,7 +560,7 @@ static void parse_rx_stream(phone_connection_t *connection)
             return;
         }
 
-        if (!tmy05_protocol_validate_frame(connection->rx_stream, frame_length)) {
+        if (!tmy06_protocol_validate_frame(connection->rx_stream, frame_length)) {
             ESP_LOGW(TAG, "Checksum/tail error, resynchronizing RX stream");
             ESP_LOG_BUFFER_HEX_LEVEL(TAG,
                                      connection->rx_stream,
@@ -653,7 +673,7 @@ static void configure_gatt_characteristics(void)
 {
     if (g_profile_info->is_legacy) {
         /*
-         * Legacy Y05 uses one bidirectional FFF7 characteristic.  Registering
+         * Legacy Y06 uses one bidirectional FFF7 characteristic.  Registering
          * separate write and notify characteristics with the same UUID makes
          * them ambiguous to phone APIs, which normally resolve a
          * characteristic by service UUID + characteristic UUID only.
@@ -878,11 +898,15 @@ static void host_task(void *arg)
 void ble_init(ble_sim_profile_t profile)
 {
     if ((unsigned int)profile >= BLE_SIM_PROFILE_COUNT) {
-        profile = BLE_SIM_PROFILE_LEGACY_Y05;
+        profile = BLE_SIM_PROFILE_LEGACY_Y06;
     }
     g_active_profile = profile;
     g_profile_info = ble_sim_profile_info(profile);
     fridge_protocol_make_initial_state(profile, &g_fridge_state);
+    if (g_profile_info->has_ambient_light) {
+        esp_err_t err = ambient_light_load(&g_fridge_state.ambient);
+        if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) ESP_LOGW(TAG, "氛围灯设置读取失败，使用默认值：%s", esp_err_to_name(err));
+    }
     wifi_provisioning_set_ble_notify_handler(notify_wifi_provisioning);
     tesla_link_set_ble_notify_handler(notify_tesla_link);
     if (g_notify_mutex == NULL) {
@@ -922,7 +946,7 @@ ble_sim_profile_t ble_sim_get_active_profile(void)
     return g_active_profile;
 }
 
-bool ble_tmy05_get_state(tmy05_state_t *state)
+bool ble_tmy06_get_state(tmy06_state_t *state)
 {
     if (state == NULL) {
         return false;
@@ -932,26 +956,29 @@ bool ble_tmy05_get_state(tmy05_state_t *state)
     return true;
 }
 
-bool ble_tmy05_set_state(const tmy05_state_t *state)
+bool ble_tmy06_set_state(const tmy06_state_t *state)
 {
     if (!fridge_protocol_validate_state(g_active_profile, state)) {
         return false;
     }
 
-    tmy05_state_t previous;
+    tmy06_state_t previous;
     portENTER_CRITICAL(&g_state_lock);
     previous = g_fridge_state;
     g_fridge_state = *state;
+    // Console/MQTT refrigerator edits do not overwrite light settings.
+    g_fridge_state.ambient = previous.ambient;
+    tmy06_state_t current = g_fridge_state;
     portEXIT_CRITICAL(&g_state_lock);
     notify_all_subscribers("冰箱完整状态改变", true);
-    report_state_change(&previous, state);
+    report_state_change(&previous, &current);
     return true;
 }
 
-bool ble_tmy05_set_actual_temperature(int16_t temperature)
+bool ble_tmy06_set_actual_temperature(int16_t temperature)
 {
-    tmy05_state_t previous;
-    tmy05_state_t current;
+    tmy06_state_t previous;
+    tmy06_state_t current;
     portENTER_CRITICAL(&g_state_lock);
     previous = g_fridge_state;
     g_fridge_state.actual_temperature = temperature;
@@ -962,14 +989,14 @@ bool ble_tmy05_set_actual_temperature(int16_t temperature)
     return true;
 }
 
-bool ble_tmy05_set_fault(uint8_t fault_code)
+bool ble_tmy06_set_fault(uint8_t fault_code)
 {
     if (fault_code > g_profile_info->maximum_fault_code) {
         return false;
     }
 
-    tmy05_state_t previous;
-    tmy05_state_t current;
+    tmy06_state_t previous;
+    tmy06_state_t current;
     portENTER_CRITICAL(&g_state_lock);
     previous = g_fridge_state;
     g_fridge_state.fault_code = fault_code;
@@ -986,8 +1013,8 @@ bool ble_fridge_set_actual_voltage(uint16_t centi_volts)
         return false;
     }
 
-    tmy05_state_t previous;
-    tmy05_state_t current;
+    tmy06_state_t previous;
+    tmy06_state_t current;
     portENTER_CRITICAL(&g_state_lock);
     previous = g_fridge_state;
     g_fridge_state.actual_voltage_centi_volts = centi_volts;
@@ -998,7 +1025,7 @@ bool ble_fridge_set_actual_voltage(uint16_t centi_volts)
     return true;
 }
 
-void ble_tmy05_set_state_change_handler(ble_state_change_handler_t handler)
+void ble_tmy06_set_state_change_handler(ble_state_change_handler_t handler)
 {
     g_state_change_handler = handler;
 }

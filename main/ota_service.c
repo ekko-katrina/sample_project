@@ -50,7 +50,7 @@ typedef struct {
 static const char *TAG = "OTA";
 static portMUX_TYPE g_ota_lock = portMUX_INITIALIZER_UNLOCKED;
 static bool g_ota_active;
-static tmy05_ota_request_t g_ota_request;
+static tmy06_ota_request_t g_ota_request;
 
 static int compare_version(uint8_t left_major,
                            uint8_t left_minor,
@@ -87,9 +87,9 @@ static void get_running_version(uint8_t *major, uint8_t *minor, uint8_t *patch)
         return;
     }
 
-    *major = CONFIG_TMY05_FW_VERSION_MAJOR;
-    *minor = CONFIG_TMY05_FW_VERSION_MINOR;
-    *patch = CONFIG_TMY05_FW_VERSION_PATCH;
+    *major = CONFIG_TMY06_FW_VERSION_MAJOR;
+    *minor = CONFIG_TMY06_FW_VERSION_MINOR;
+    *patch = CONFIG_TMY06_FW_VERSION_PATCH;
 }
 
 static bool ensure_time_synchronized(void)
@@ -281,7 +281,7 @@ cleanup:
 }
 
 static bool validate_manifest_target(const ota_manifest_t *manifest,
-                                     const tmy05_ota_request_t *request,
+                                     const tmy06_ota_request_t *request,
                                      uint8_t current_model,
                                      uint8_t current_major,
                                      uint8_t current_minor,
@@ -350,31 +350,31 @@ static void finish_ota_task(void)
     vTaskDelete(NULL);
 }
 
-static void report_error_and_finish(tmy05_ota_error_t error)
+static void report_error_and_finish(tmy06_ota_error_t error)
 {
-    ble_ota_report_status(TMY05_OTA_STATUS_ERROR, error);
+    ble_ota_report_status(TMY06_OTA_STATUS_ERROR, error);
     finish_ota_task();
 }
 
 static void ota_update_task(void *argument)
 {
     (void)argument;
-    tmy05_ota_request_t request;
+    tmy06_ota_request_t request;
     portENTER_CRITICAL(&g_ota_lock);
     request = g_ota_request;
     portEXIT_CRITICAL(&g_ota_lock);
 
-    ble_ota_report_status(TMY05_OTA_STATUS_PREPARING, TMY05_OTA_ERROR_NONE);
+    ble_ota_report_status(TMY06_OTA_STATUS_PREPARING, TMY06_OTA_ERROR_NONE);
 
     if (!wifi_provisioning_wait_connected(
             pdMS_TO_TICKS(OTA_NETWORK_TIMEOUT_MS))) {
         ESP_LOGE(TAG, "OTA aborted: Wi-Fi is not connected");
-        report_error_and_finish(TMY05_OTA_ERROR_NETWORK);
+        report_error_and_finish(TMY06_OTA_ERROR_NETWORK);
         return;
     }
 
     if (!ensure_time_synchronized()) {
-        report_error_and_finish(TMY05_OTA_ERROR_TIMEOUT);
+        report_error_and_finish(TMY06_OTA_ERROR_TIMEOUT);
         return;
     }
 
@@ -388,12 +388,12 @@ static void ota_update_task(void *argument)
     char manifest_url[OTA_URL_CAPACITY];
     int url_length = snprintf(manifest_url, sizeof(manifest_url),
                               "%s/%u/%u.%u.%u.json",
-                              CONFIG_TMY05_OTA_RELEASE_BASE_URL,
+                              CONFIG_TMY06_OTA_RELEASE_BASE_URL,
                               request.model_id, request.major,
                               request.minor, request.patch);
     if (url_length <= 0 || (size_t)url_length >= sizeof(manifest_url)) {
         ESP_LOGE(TAG, "Manifest URL is invalid or too long");
-        report_error_and_finish(TMY05_OTA_ERROR_DOWNLOAD);
+        report_error_and_finish(TMY06_OTA_ERROR_DOWNLOAD);
         return;
     }
 
@@ -408,8 +408,8 @@ static void ota_update_task(void *argument)
         !validate_manifest_target(&manifest, &request, profile->model_id,
                                   current_major, current_minor, current_patch)) {
         ESP_LOGE(TAG, "OTA manifest is unavailable, invalid, or mismatched");
-        report_error_and_finish(err == ESP_OK ? TMY05_OTA_ERROR_VERSION
-                                              : TMY05_OTA_ERROR_DOWNLOAD);
+        report_error_and_finish(err == ESP_OK ? TMY06_OTA_ERROR_VERSION
+                                              : TMY06_OTA_ERROR_DOWNLOAD);
         return;
     }
 
@@ -417,15 +417,15 @@ static void ota_update_task(void *argument)
         esp_ota_get_next_update_partition(NULL);
     if (update_partition == NULL || manifest.size > update_partition->size) {
         ESP_LOGE(TAG, "OTA image does not fit the update partition");
-        report_error_and_finish(TMY05_OTA_ERROR_SPACE);
+        report_error_and_finish(TMY06_OTA_ERROR_SPACE);
         return;
     }
 
     ESP_LOGI(TAG, "Release %s: %" PRIu32 " bytes -> %s at 0x%08" PRIx32,
              manifest.release_id, manifest.size, update_partition->label,
              update_partition->address);
-    ble_ota_report_status(TMY05_OTA_STATUS_DOWNLOADING,
-                          TMY05_OTA_ERROR_NONE);
+    ble_ota_report_status(TMY06_OTA_STATUS_DOWNLOADING,
+                          TMY06_OTA_ERROR_NONE);
 
     esp_http_client_config_t http_config = {
         .url = manifest.url,
@@ -441,7 +441,7 @@ static void ota_update_task(void *argument)
     err = esp_https_ota_begin(&ota_config, &ota_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "HTTPS OTA begin failed: %s", esp_err_to_name(err));
-        report_error_and_finish(TMY05_OTA_ERROR_DOWNLOAD);
+        report_error_and_finish(TMY06_OTA_ERROR_DOWNLOAD);
         return;
     }
 
@@ -455,19 +455,19 @@ static void ota_update_task(void *argument)
         ESP_LOGE(TAG, "OTA download incomplete: err=%s actual=%d expected=%" PRIu32,
                  esp_err_to_name(err), image_length, manifest.size);
         esp_https_ota_abort(ota_handle);
-        report_error_and_finish(TMY05_OTA_ERROR_DOWNLOAD);
+        report_error_and_finish(TMY06_OTA_ERROR_DOWNLOAD);
         return;
     }
 
-    ble_ota_report_status(TMY05_OTA_STATUS_VERIFYING,
-                          TMY05_OTA_ERROR_NONE);
+    ble_ota_report_status(TMY06_OTA_STATUS_VERIFYING,
+                          TMY06_OTA_ERROR_NONE);
     uint8_t actual_sha256[OTA_HASH_SIZE];
     if (!calculate_partition_sha256(update_partition, manifest.size,
                                     actual_sha256) ||
         memcmp(actual_sha256, manifest.sha256, OTA_HASH_SIZE) != 0) {
         ESP_LOGE(TAG, "Downloaded firmware SHA-256 does not match manifest");
         esp_https_ota_abort(ota_handle);
-        report_error_and_finish(TMY05_OTA_ERROR_VERIFY);
+        report_error_and_finish(TMY06_OTA_ERROR_VERIFY);
         return;
     }
 
@@ -476,22 +476,22 @@ static void ota_update_task(void *argument)
         ESP_LOGE(TAG, "OTA image validation/activation failed: %s",
                  esp_err_to_name(err));
         report_error_and_finish(err == ESP_ERR_OTA_VALIDATE_FAILED
-                                    ? TMY05_OTA_ERROR_VERIFY
-                                    : TMY05_OTA_ERROR_FLASH);
+                                    ? TMY06_OTA_ERROR_VERIFY
+                                    : TMY06_OTA_ERROR_FLASH);
         return;
     }
 
     ESP_LOGI(TAG, "OTA image verified; restarting into the new partition");
-    ble_ota_report_status(TMY05_OTA_STATUS_RESTARTING,
-                          TMY05_OTA_ERROR_NONE);
+    ble_ota_report_status(TMY06_OTA_STATUS_RESTARTING,
+                          TMY06_OTA_ERROR_NONE);
     vTaskDelay(pdMS_TO_TICKS(750));
     mqtt_service_prepare_restart();
     esp_restart();
 }
 
-static bool start_ota_from_ble(const tmy05_ota_request_t *request)
+static bool start_ota_from_ble(const tmy06_ota_request_t *request)
 {
-    if (request == NULL || request->command != TMY05_OTA_COMMAND_START) {
+    if (request == NULL || request->command != TMY06_OTA_COMMAND_START) {
         return false;
     }
 
@@ -563,7 +563,7 @@ esp_err_t ota_service_init(void)
     const esp_app_desc_t *app_desc = esp_app_get_description();
     ESP_LOGI(TAG, "Firmware version: %s", app_desc->version);
     ESP_LOGI(TAG, "OTA release manifest base: %s",
-             CONFIG_TMY05_OTA_RELEASE_BASE_URL);
+             CONFIG_TMY06_OTA_RELEASE_BASE_URL);
 
     ble_ota_set_start_handler(start_ota_from_ble);
 

@@ -23,24 +23,24 @@ static ble_sim_profile_t g_button_profile;
 ble_sim_profile_t ble_profile_load(void)
 {
     nvs_handle_t handle;
-    uint8_t stored_profile = BLE_SIM_PROFILE_LEGACY_Y05;
+    uint8_t stored_profile = BLE_SIM_PROFILE_LEGACY_Y06;
     esp_err_t err = nvs_open(PROFILE_NVS_NAMESPACE, NVS_READONLY, &handle);
     if (err == ESP_ERR_NVS_NOT_FOUND) {
-        ESP_LOGI(TAG, "尚未保存档位，默认使用旧版 Y05");
-        return BLE_SIM_PROFILE_LEGACY_Y05;
+        ESP_LOGI(TAG, "尚未保存档位，默认使用旧版 Y06");
+        return BLE_SIM_PROFILE_LEGACY_Y06;
     }
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "读取档位失败：%s，默认使用旧版 Y05", esp_err_to_name(err));
-        return BLE_SIM_PROFILE_LEGACY_Y05;
+        ESP_LOGW(TAG, "读取档位失败：%s，默认使用旧版 Y06", esp_err_to_name(err));
+        return BLE_SIM_PROFILE_LEGACY_Y06;
     }
 
     err = nvs_get_u8(handle, PROFILE_NVS_KEY, &stored_profile);
     nvs_close(handle);
     if (err != ESP_OK || stored_profile >= BLE_SIM_PROFILE_COUNT) {
         if (err != ESP_ERR_NVS_NOT_FOUND) {
-            ESP_LOGW(TAG, "保存的档位无效，默认使用旧版 Y05");
+            ESP_LOGW(TAG, "保存的档位无效，默认使用旧版 Y06");
         }
-        return BLE_SIM_PROFILE_LEGACY_Y05;
+        return BLE_SIM_PROFILE_LEGACY_Y06;
     }
     return (ble_sim_profile_t)stored_profile;
 }

@@ -66,6 +66,12 @@ void led_set(uint32_t on) // 设置 LED 亮灭
     led_refresh(on ? 16 : 0, 0, 0); // 点亮时显示低亮度红色, 关闭时三色都为 0
 }
 
+void led_set_rgb(uint8_t red, uint8_t green, uint8_t blue)
+{
+    led_is_on = red || green || blue;
+    led_refresh(red, green, blue);
+}
+
 void led_toggle(void) // 翻转 LED 亮灭状态
 {
     led_set(!led_is_on); // 当前亮则关, 当前灭则亮

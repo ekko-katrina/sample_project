@@ -51,13 +51,13 @@ ESP32 只使用以下四个 Topic：
 | 发布 | `fridge/{sn}/online` | 1 | 是 | 发布 ESP32 在线状态 |
 | 发布 | `fridge/{sn}/state` | 1 | 是 | 发布完整设备状态 |
 
-示例 SN `TMY05-TEST-001`：
+示例 SN `TMY06-TEST-001`：
 
 ```text
-fridge/TMY05-TEST-001/cmd
-fridge/TMY05-TEST-001/viewer
-fridge/TMY05-TEST-001/online
-fridge/TMY05-TEST-001/state
+fridge/TMY06-TEST-001/cmd
+fridge/TMY06-TEST-001/viewer
+fridge/TMY06-TEST-001/online
+fridge/TMY06-TEST-001/state
 ```
 
 ESP32 不订阅通配符 Topic，不接收其他设备的消息。
@@ -193,7 +193,7 @@ Topic：`fridge/{sn}/state`。QoS 为 1，Retain 为 `true`。每次必须发布
 | `rssi` | integer | 可选 | Wi-Fi RSSI，单位 dBm |
 | `uptime` | integer | 必填 | 本次启动后的运行秒数 |
 
-TM-Y05 示例：
+TM-Y06 示例：
 
 ```json
 {
@@ -227,7 +227,7 @@ TM-Y16、TM-Y17、TM-310 示例：
 
 型号字段规则：
 
-- TM-Y05 必须发送 `childLock`，不发送 `voltage`；
+- TM-Y06 必须发送 `childLock`，不发送 `voltage`；
 - TM-Y16、TM-Y17、TM-310 必须发送 `voltage`，不发送 `childLock`；
 - `voltage` 单位为伏，例如内部值 1267 上报为 `12.67`。
 
@@ -256,7 +256,7 @@ ESP32 从 `fridge/{sn}/cmd` 接收命令。命令使用 QoS 1，Retain 必须为
 | `SET_MODE` | `mode`: string | 设置当前型号支持的模式 |
 | `SET_TEMPERATURE_UNIT` | `unit`: string | 设置温标并换算两个温度值 |
 | `SET_TARGET_TEMPERATURE` | `temperature`: integer | 设置当前温标下的目标温度 |
-| `SET_CHILD_LOCK` | `locked`: boolean | 设置童锁，仅TM-Y05 支持 |
+| `SET_CHILD_LOCK` | `locked`: boolean | 设置童锁，仅TM-Y06 支持 |
 
 命令不包含 `id`，协议不定义 `reply` Topic。命令成功后，以新的完整 `state` 作为最终结果。
 
@@ -288,12 +288,12 @@ ESP32 无论 `viewer` 是否在线都会接收并执行合法命令；但 `viewe
 
 | 型号 | 支持模式 | `SET_CHILD_LOCK` | 状态特有字段 | fault 范围 |
 | --- | --- | :---: | --- | ---: |
-| TM-Y05 | `COOL`、`HEAT` | 支持 | `childLock` | 0～3 |
+| TM-Y06 | `COOL`、`HEAT` | 支持 | `childLock` | 0～3 |
 | TM-Y16 | `COOL`、`MAX`、`ECO` | 不支持 | `voltage` | 0～7 |
 | TM-Y17 | `COOL`、`MAX`、`ECO`、`HEAT` | 不支持 | `voltage` | 0～7 |
 | TM-310 | `COOL`、`MAX`、`ECO`、`HEAT` | 不支持 | `voltage` | 0～7 |
 
-TM-Y05 故障码：
+TM-Y06 故障码：
 
 | fault | 含义 |
 | ---: | --- |

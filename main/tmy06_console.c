@@ -1,4 +1,4 @@
-#include "tmy05_console.h"
+#include "tmy06_console.h"
 
 #include <errno.h>
 #include <limits.h>
@@ -19,35 +19,35 @@ static const ble_sim_profile_info_t *active_profile(void)
     return ble_sim_profile_info(ble_sim_get_active_profile());
 }
 
-static const char *power_text(tmy05_power_t power)
+static const char *power_text(tmy06_power_t power)
 {
-    return power == TMY05_POWER_ON ? "开机" : "关机";
+    return power == TMY06_POWER_ON ? "开机" : "关机";
 }
 
-static const char *unit_text(tmy05_temperature_unit_t unit)
+static const char *unit_text(tmy06_temperature_unit_t unit)
 {
-    return unit == TMY05_UNIT_FAHRENHEIT ? "华氏度" : "摄氏度";
+    return unit == TMY06_UNIT_FAHRENHEIT ? "华氏度" : "摄氏度";
 }
 
-static const char *mode_text(tmy05_mode_t mode)
+static const char *mode_text(tmy06_mode_t mode)
 {
     switch (mode) {
-    case TMY05_MODE_COOLING:
+    case TMY06_MODE_COOLING:
         return active_profile()->has_child_lock ? "制冷" : "冷藏";
-    case TMY05_MODE_MAX:
+    case TMY06_MODE_MAX:
         return "MAX";
-    case TMY05_MODE_ECO:
+    case TMY06_MODE_ECO:
         return "ECO";
-    case TMY05_MODE_HEATING:
+    case TMY06_MODE_HEATING:
         return "制热";
     default:
         return "未知";
     }
 }
 
-static const char *lock_text(tmy05_child_lock_t child_lock)
+static const char *lock_text(tmy06_child_lock_t child_lock)
 {
-    return child_lock == TMY05_CHILD_LOCK_ON ? "上锁" : "解锁";
+    return child_lock == TMY06_CHILD_LOCK_ON ? "上锁" : "解锁";
 }
 
 static const char *fault_text(uint8_t fault_code)
@@ -60,20 +60,20 @@ static const char *fault_text(uint8_t fault_code)
     }
 
     switch (fault_code) {
-    case TMY05_FAULT_NONE:
+    case TMY06_FAULT_NONE:
         return "无故障";
-    case TMY05_FAULT_NTC_SHORT:
+    case TMY06_FAULT_NTC_SHORT:
         return "NTC短路";
-    case TMY05_FAULT_NTC_OPEN:
+    case TMY06_FAULT_NTC_OPEN:
         return "NTC开路";
-    case TMY05_FAULT_HIGH_TEMPERATURE:
+    case TMY06_FAULT_HIGH_TEMPERATURE:
         return "75度高温保护";
     default:
         return "未知故障";
     }
 }
 
-static void print_state(const char *prefix, const tmy05_state_t *state)
+static void print_state(const char *prefix, const tmy06_state_t *state)
 {
     const ble_sim_profile_info_t *profile = active_profile();
     printf("%s档位=%s，电源=%s，单位=%s，模式=%s，",
@@ -89,21 +89,29 @@ static void print_state(const char *prefix, const tmy05_state_t *state)
                state->actual_voltage_centi_volts / 100U,
                state->actual_voltage_centi_volts % 100U);
     }
+    if (profile->has_ambient_light) {
+        const uint8_t *active = tmy06_protocol_active_ambient_color(state);
+        printf("氛围灯=%s，制冷=#%02X%02X%02X，制热=#%02X%02X%02X，当前=#%02X%02X%02X，",
+               state->ambient.effect ? "呼吸" : "常亮",
+               state->ambient.colors[0][0], state->ambient.colors[0][1], state->ambient.colors[0][2],
+               state->ambient.colors[1][0], state->ambient.colors[1][1], state->ambient.colors[1][2],
+               active[0], active[1], active[2]);
+    }
     printf("故障=%s(%u)\n", fault_text(state->fault_code), state->fault_code);
 }
 
-static bool get_state(tmy05_state_t *state)
+static bool get_state(tmy06_state_t *state)
 {
-    if (!ble_tmy05_get_state(state)) {
+    if (!ble_tmy06_get_state(state)) {
         ESP_LOGE(TAG, "读取冰箱状态失败");
         return false;
     }
     return true;
 }
 
-static int apply_body_operation(const char *description, tmy05_state_t *state)
+static int apply_body_operation(const char *description, tmy06_state_t *state)
 {
-    if (!ble_tmy05_set_state(state)) {
+    if (!ble_tmy06_set_state(state)) {
         ESP_LOGE(TAG, "状态参数无效，未执行：%s", description);
         return 1;
     }
@@ -130,7 +138,7 @@ static int status_command(int argc, char **argv)
 {
     (void)argc;
     (void)argv;
-    tmy05_state_t state;
+    tmy06_state_t state;
     if (!get_state(&state)) {
         return 1;
     }
@@ -145,17 +153,17 @@ static int power_command(int argc, char **argv)
         return 1;
     }
 
-    tmy05_state_t state;
+    tmy06_state_t state;
     if (!get_state(&state)) {
         return 1;
     }
 
     if (strcmp(argv[1], "on") == 0) {
-        state.power = TMY05_POWER_ON;
+        state.power = TMY06_POWER_ON;
     } else if (strcmp(argv[1], "off") == 0) {
-        state.power = TMY05_POWER_OFF;
+        state.power = TMY06_POWER_OFF;
     } else if (strcmp(argv[1], "toggle") == 0) {
-        state.power = state.power == TMY05_POWER_ON ? TMY05_POWER_OFF : TMY05_POWER_ON;
+        state.power = state.power == TMY06_POWER_ON ? TMY06_POWER_OFF : TMY06_POWER_ON;
     } else {
         printf("用法：power on|off|toggle\n");
         return 1;
@@ -175,19 +183,19 @@ static int lock_command(int argc, char **argv)
         return 1;
     }
 
-    tmy05_state_t state;
+    tmy06_state_t state;
     if (!get_state(&state)) {
         return 1;
     }
 
     if (strcmp(argv[1], "on") == 0) {
-        state.child_lock = TMY05_CHILD_LOCK_ON;
+        state.child_lock = TMY06_CHILD_LOCK_ON;
     } else if (strcmp(argv[1], "off") == 0) {
-        state.child_lock = TMY05_CHILD_LOCK_OFF;
+        state.child_lock = TMY06_CHILD_LOCK_OFF;
     } else if (strcmp(argv[1], "toggle") == 0) {
-        state.child_lock = state.child_lock == TMY05_CHILD_LOCK_ON
-                               ? TMY05_CHILD_LOCK_OFF
-                               : TMY05_CHILD_LOCK_ON;
+        state.child_lock = state.child_lock == TMY06_CHILD_LOCK_ON
+                               ? TMY06_CHILD_LOCK_OFF
+                               : TMY06_CHILD_LOCK_ON;
     } else {
         printf("用法：lock on|off|toggle\n");
         return 1;
@@ -203,25 +211,25 @@ static int mode_command(int argc, char **argv)
         return 1;
     }
 
-    tmy05_state_t state;
+    tmy06_state_t state;
     if (!get_state(&state)) {
         return 1;
     }
 
     if (strcmp(argv[1], "cool") == 0) {
-        state.mode = TMY05_MODE_COOLING;
+        state.mode = TMY06_MODE_COOLING;
     } else if (strcmp(argv[1], "max") == 0) {
-        state.mode = TMY05_MODE_MAX;
+        state.mode = TMY06_MODE_MAX;
     } else if (strcmp(argv[1], "eco") == 0) {
-        state.mode = TMY05_MODE_ECO;
+        state.mode = TMY06_MODE_ECO;
     } else if (strcmp(argv[1], "heat") == 0) {
-        state.mode = TMY05_MODE_HEATING;
+        state.mode = TMY06_MODE_HEATING;
     } else if (strcmp(argv[1], "toggle") == 0) {
         uint8_t candidate = (uint8_t)state.mode;
         do {
-            candidate = (candidate + 1U) % ((uint8_t)TMY05_MODE_HEATING + 1U);
+            candidate = (candidate + 1U) % ((uint8_t)TMY06_MODE_HEATING + 1U);
         } while ((active_profile()->supported_mode_mask & (1U << candidate)) == 0U);
-        state.mode = (tmy05_mode_t)candidate;
+        state.mode = (tmy06_mode_t)candidate;
     } else {
         printf("用法：mode cool|max|eco|heat|toggle\n");
         return 1;
@@ -245,20 +253,20 @@ static int unit_command(int argc, char **argv)
         return 1;
     }
 
-    tmy05_state_t state;
+    tmy06_state_t state;
     if (!get_state(&state)) {
         return 1;
     }
 
-    tmy05_temperature_unit_t requested_unit;
+    tmy06_temperature_unit_t requested_unit;
     if (strcmp(argv[1], "c") == 0) {
-        requested_unit = TMY05_UNIT_CELSIUS;
+        requested_unit = TMY06_UNIT_CELSIUS;
     } else if (strcmp(argv[1], "f") == 0) {
-        requested_unit = TMY05_UNIT_FAHRENHEIT;
+        requested_unit = TMY06_UNIT_FAHRENHEIT;
     } else if (strcmp(argv[1], "toggle") == 0) {
-        requested_unit = state.unit == TMY05_UNIT_CELSIUS
-                             ? TMY05_UNIT_FAHRENHEIT
-                             : TMY05_UNIT_CELSIUS;
+        requested_unit = state.unit == TMY06_UNIT_CELSIUS
+                             ? TMY06_UNIT_FAHRENHEIT
+                             : TMY06_UNIT_CELSIUS;
     } else {
         printf("用法：unit c|f|toggle\n");
         return 1;
@@ -287,7 +295,7 @@ static int temperature_command(int argc, char **argv, bool actual)
         return 1;
     }
 
-    tmy05_state_t state;
+    tmy06_state_t state;
     if (!get_state(&state)) {
         return 1;
     }
@@ -326,14 +334,14 @@ static int fault_command(int argc, char **argv)
 
     char *end = NULL;
     long fault = strtol(argv[1], &end, 10);
-    if (end == argv[1] || *end != '\0' || fault < TMY05_FAULT_NONE ||
+    if (end == argv[1] || *end != '\0' || fault < TMY06_FAULT_NONE ||
         fault > active_profile()->maximum_fault_code) {
         printf("当前档位故障码范围：0 到 %u\n",
                active_profile()->maximum_fault_code);
         return 1;
     }
 
-    tmy05_state_t state;
+    tmy06_state_t state;
     if (!get_state(&state)) {
         return 1;
     }
@@ -363,7 +371,7 @@ static int voltage_command(int argc, char **argv)
         return 1;
     }
 
-    tmy05_state_t state;
+    tmy06_state_t state;
     if (!get_state(&state)) {
         return 1;
     }
@@ -389,7 +397,7 @@ static void register_command(const char *name,
     ESP_ERROR_CHECK(esp_console_cmd_register(&command));
 }
 
-void tmy05_console_init(void)
+void tmy06_console_init(void)
 {
     esp_console_register_help_command();
     register_command("status", "显示当前冰箱完整状态", NULL, status_command);

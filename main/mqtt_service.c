@@ -50,8 +50,8 @@ typedef struct {
             size_t length;
         } command;
         struct {
-            tmy05_state_t before;
-            tmy05_state_t after;
+            tmy06_state_t before;
+            tmy06_state_t after;
         } state;
     } data;
 } mqtt_work_item_t;
@@ -89,11 +89,11 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
 static const char *test_sn_for_profile(ble_sim_profile_t profile)
 {
     static const char *const test_sns[BLE_SIM_PROFILE_COUNT] = {
-        [BLE_SIM_PROFILE_LEGACY_Y05] = "TMY05-LEGACY-001",
+        [BLE_SIM_PROFILE_LEGACY_Y06] = "TMY06-LEGACY-001",
         [BLE_SIM_PROFILE_NEW_Y17] = "TMY17-TEST-001",
         [BLE_SIM_PROFILE_NEW_Y16] = "TMY16-TEST-001",
         [BLE_SIM_PROFILE_NEW_TM310] = "TM310-TEST-001",
-        [BLE_SIM_PROFILE_NEW_Y05] = "TMY05-TEST-001",
+        [BLE_SIM_PROFILE_NEW_Y06] = "TMY06-TEST-001",
     };
     return (unsigned int)profile < BLE_SIM_PROFILE_COUNT
                ? test_sns[profile]
@@ -142,7 +142,7 @@ static esp_err_t load_device_sn(ble_sim_profile_t profile)
         return err;
     }
 
-#if CONFIG_TMY05_MQTT_ALLOW_TEST_SN
+#if CONFIG_TMY06_MQTT_ALLOW_TEST_SN
     const char *test_sn = test_sn_for_profile(profile);
     if (test_sn == NULL || !sn_is_valid(test_sn)) {
         return ESP_ERR_INVALID_ARG;
@@ -182,21 +182,21 @@ static void publish_online(void)
     mqtt_publish(g_topic_online, "{\"online\":true}", 1, 1);
 }
 
-static const char *unit_name(tmy05_temperature_unit_t unit)
+static const char *unit_name(tmy06_temperature_unit_t unit)
 {
-    return unit == TMY05_UNIT_FAHRENHEIT ? "FAHRENHEIT" : "CELSIUS";
+    return unit == TMY06_UNIT_FAHRENHEIT ? "FAHRENHEIT" : "CELSIUS";
 }
 
-static const char *mode_name(tmy05_mode_t mode)
+static const char *mode_name(tmy06_mode_t mode)
 {
     switch (mode) {
-    case TMY05_MODE_MAX:
+    case TMY06_MODE_MAX:
         return "MAX";
-    case TMY05_MODE_ECO:
+    case TMY06_MODE_ECO:
         return "ECO";
-    case TMY05_MODE_HEATING:
+    case TMY06_MODE_HEATING:
         return "HEAT";
-    case TMY05_MODE_COOLING:
+    case TMY06_MODE_COOLING:
     default:
         return "COOL";
     }
@@ -204,8 +204,8 @@ static const char *mode_name(tmy05_mode_t mode)
 
 static void publish_state(void)
 {
-    tmy05_state_t state;
-    if (!ble_tmy05_get_state(&state)) {
+    tmy06_state_t state;
+    if (!ble_tmy06_get_state(&state)) {
         ESP_LOGW(TAG, "Cannot read state for MQTT publish");
         return;
     }
@@ -216,12 +216,12 @@ static void publish_state(void)
     if (root == NULL) {
         return;
     }
-    cJSON_AddBoolToObject(root, "powerOn", state.power == TMY05_POWER_ON);
+    cJSON_AddBoolToObject(root, "powerOn", state.power == TMY06_POWER_ON);
     cJSON_AddStringToObject(root, "unit", unit_name(state.unit));
     cJSON_AddStringToObject(root, "mode", mode_name(state.mode));
     if (g_profile_info->has_child_lock) {
         cJSON_AddBoolToObject(root, "childLock",
-                              state.child_lock == TMY05_CHILD_LOCK_ON);
+                              state.child_lock == TMY06_CHILD_LOCK_ON);
     }
     cJSON_AddNumberToObject(root, "targetTemp", state.target_temperature);
     cJSON_AddNumberToObject(root, "currentTemp", state.actual_temperature);
@@ -347,8 +347,8 @@ static void handle_command(char *json, size_t json_length)
     }
 
     const char *command = command_item->valuestring;
-    tmy05_state_t state;
-    if (!ble_tmy05_get_state(&state)) {
+    tmy06_state_t state;
+    if (!ble_tmy06_get_state(&state)) {
         ESP_LOGE(TAG, "Cannot read state for MQTT command %s", command);
         cJSON_Delete(root);
         return;
@@ -370,7 +370,7 @@ static void handle_command(char *json, size_t json_length)
             error_code = "INVALID_PARAMETER";
             error_message = "powerOn must be boolean";
         } else {
-            state.power = cJSON_IsTrue(value) ? TMY05_POWER_ON : TMY05_POWER_OFF;
+            state.power = cJSON_IsTrue(value) ? TMY06_POWER_ON : TMY06_POWER_OFF;
         }
     } else if (strcmp(command, "SET_MODE") == 0) {
         params = required_params_object(root);
@@ -380,16 +380,16 @@ static void handle_command(char *json, size_t json_length)
             error_code = "INVALID_PARAMETER";
             error_message = "mode must be string";
         } else {
-            tmy05_mode_t requested_mode;
+            tmy06_mode_t requested_mode;
             bool known_mode = true;
             if (strcmp(value->valuestring, "COOL") == 0) {
-                requested_mode = TMY05_MODE_COOLING;
+                requested_mode = TMY06_MODE_COOLING;
             } else if (strcmp(value->valuestring, "MAX") == 0) {
-                requested_mode = TMY05_MODE_MAX;
+                requested_mode = TMY06_MODE_MAX;
             } else if (strcmp(value->valuestring, "ECO") == 0) {
-                requested_mode = TMY05_MODE_ECO;
+                requested_mode = TMY06_MODE_ECO;
             } else if (strcmp(value->valuestring, "HEAT") == 0) {
-                requested_mode = TMY05_MODE_HEATING;
+                requested_mode = TMY06_MODE_HEATING;
             } else {
                 known_mode = false;
             }
@@ -408,14 +408,14 @@ static void handle_command(char *json, size_t json_length)
         params = required_params_object(root);
         cJSON *value = params == NULL ? NULL
                                       : cJSON_GetObjectItemCaseSensitive(params, "unit");
-        tmy05_temperature_unit_t requested_unit;
+        tmy06_temperature_unit_t requested_unit;
         if (!json_string_is_valid(value, 16U)) {
             error_code = "INVALID_PARAMETER";
             error_message = "unit must be string";
         } else if (strcmp(value->valuestring, "CELSIUS") == 0) {
-            requested_unit = TMY05_UNIT_CELSIUS;
+            requested_unit = TMY06_UNIT_CELSIUS;
         } else if (strcmp(value->valuestring, "FAHRENHEIT") == 0) {
-            requested_unit = TMY05_UNIT_FAHRENHEIT;
+            requested_unit = TMY06_UNIT_FAHRENHEIT;
         } else {
             error_code = "INVALID_PARAMETER";
             error_message = "invalid temperature unit";
@@ -446,8 +446,8 @@ static void handle_command(char *json, size_t json_length)
                 error_code = "INVALID_PARAMETER";
                 error_message = "locked must be boolean";
             } else {
-                state.child_lock = cJSON_IsTrue(value) ? TMY05_CHILD_LOCK_ON
-                                                       : TMY05_CHILD_LOCK_OFF;
+                state.child_lock = cJSON_IsTrue(value) ? TMY06_CHILD_LOCK_ON
+                                                       : TMY06_CHILD_LOCK_OFF;
             }
         }
     } else {
@@ -461,7 +461,7 @@ static void handle_command(char *json, size_t json_length)
                  command, error_code, error_message);
     } else if (setting_command) {
         g_applying_mqtt_command = true;
-        bool applied = ble_tmy05_set_state(&state);
+        bool applied = ble_tmy06_set_state(&state);
         g_applying_mqtt_command = false;
         if (!applied) {
             ESP_LOGE(TAG, "MQTT command %s failed to update state", command);
@@ -497,8 +497,8 @@ static bool parse_viewer_status(const char *json, size_t json_length,
     return valid;
 }
 
-static void state_change_handler(const tmy05_state_t *before,
-                                 const tmy05_state_t *after)
+static void state_change_handler(const tmy06_state_t *before,
+                                 const tmy06_state_t *after)
 {
     if (g_work_queue == NULL ||
         (g_applying_mqtt_command && xTaskGetCurrentTaskHandle() == g_service_task)) {
@@ -529,7 +529,7 @@ static void mqtt_service_task(void *argument)
     }
 
     const esp_mqtt_client_config_t config = {
-        .broker.address.uri = CONFIG_TMY05_MQTT_BROKER_URI,
+        .broker.address.uri = CONFIG_TMY06_MQTT_BROKER_URI,
         .credentials.client_id = g_sn,
         .session.keepalive = 60,
         .session.disable_clean_session = false,
@@ -762,7 +762,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
 esp_err_t mqtt_service_init(void)
 {
     ble_sim_profile_t profile = ble_sim_get_active_profile();
-    if (profile == BLE_SIM_PROFILE_LEGACY_Y05) {
+    if (profile == BLE_SIM_PROFILE_LEGACY_Y06) {
         ESP_LOGI(TAG, "MQTT disabled for profile %s",
                  ble_sim_profile_info(profile)->display_name);
         return ESP_OK;
@@ -791,10 +791,10 @@ esp_err_t mqtt_service_init(void)
         }
         return ESP_ERR_NO_MEM;
     }
-    ble_tmy05_set_state_change_handler(state_change_handler);
+    ble_tmy06_set_state_change_handler(state_change_handler);
     if (xTaskCreate(mqtt_service_task, "fridge_mqtt", 7168, NULL, 5,
                     &g_service_task) != pdPASS) {
-        ble_tmy05_set_state_change_handler(NULL);
+        ble_tmy06_set_state_change_handler(NULL);
         vQueueDelete(g_work_queue);
         vSemaphoreDelete(g_offline_ack);
         g_work_queue = NULL;

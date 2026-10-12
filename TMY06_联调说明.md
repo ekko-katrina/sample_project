@@ -1,18 +1,18 @@
 # ESP32-S3 多机型 BLE 模拟器联调说明
 
-本工程将一块 ESP32-S3 模拟为五种 TEMAI 冰箱 BLE 设备。无需重新烧录，长按开发板 BOOT 按键即可循环切换旧协议 Y05 和四种新协议设备。
+本工程将一块 ESP32-S3 模拟为五种 TEMAI 冰箱 BLE 设备。无需重新烧录，长按开发板 BOOT 按键即可循环切换旧协议 Y06 和四种新协议设备。
 
 ## 快速切换设备
 
 BOOT 按键使用 GPIO0。长按约 2 秒，串口出现“请松开按键”后松开，设备会软重启并应用下一档：
 
 ```text
-旧版 Y05 → 新版 Y17 → 新版 Y16 → 新版 TM-310 → 新版 Y05 ─┐
+旧版 Y06 → 新版 Y17 → 新版 Y16 → 新版 TM-310 → 新版 Y06 ─┐
     ↑                                                        │
     └────────────────────────────────────────────────────────┘
 ```
 
-档位保存在 NVS，断电或普通复位不会丢失。首次烧录或 NVS 中没有档位记录时，默认启动旧版 Y05。
+档位保存在 NVS，断电或普通复位不会丢失。首次烧录或 NVS 中没有档位记录时，默认启动旧版 Y06。
 
 必须松开 BOOT 后才会重启，避免 GPIO0 保持低电平使 ESP32-S3 进入下载模式。短按 BOOT 不执行操作。
 
@@ -20,11 +20,11 @@ BOOT 按键使用 GPIO0。长按约 2 秒，串口出现“请松开按键”后
 
 | 档位 | 广播名称 | 新协议 Service Data | APP 写入 | ESP32 通知 | 状态帧 |
 | --- | --- | --- | --- | --- | --- |
-| 旧版 Y05 | `Aurora Y05_XXXX` | 无 | `FFF7` | `FFF7` | 12 字节，不含电压 |
+| 旧版 Y06 | `Aurora Y06_XXXX` | 无 | `FFF7` | `FFF7` | 19 字节，不含电压，含氛围灯设置 |
 | 新版 Y17 | `GLACIER Y_XXXX JUNIPER` | `54 4D 01 03` | `FFF1` | `FFF2` | 14 字节，含电压 |
 | 新版 Y16 | `GLACIER Y_XXXX` | `54 4D 01 02` | `FFF1` | `FFF2` | 14 字节，含电压 |
 | 新版 TM-310 | `GLACIER 3_XXXX` | `54 4D 01 01` | `FFF1` | `FFF2` | 14 字节，含电压 |
-| 新版 Y05 | `AURORA Y05_XXXX` | `54 4D 01 04` | `FFF1` | `FFF2` | 12 字节，不含电压 |
+| 新版 Y06 | `AURORA Y06_XXXX` | `54 4D 01 04` | `FFF1` | `FFF2` | 19 字节，不含电压，含氛围灯设置 |
 
 `XXXX` 自动取 ESP32-S3 BLE 固定身份 MAC 地址最后两个字节，使用大写十六进制且不包含冒号。所有档位的主服务均为 `FFF0`，最多同时连接两台手机。
 
@@ -56,13 +56,13 @@ APP 连接后先订阅当前档位的通知特征，再写入协议原始字节�
 - 开机、摄氏度、无故障。
 - 冷藏/制冷模式。
 - 目标温度 `-5`，实际温度 `3`。
-- Y05 童锁未锁。
+- Y06 童锁未锁。
 - Y17、Y16、TM-310 实际电压默认为 `12.67 V`，协议传输值为 `1267`。
 
-Y05 初始状态帧：
+Y06 初始状态帧：
 
 ```text
-A5 5A 09 00 40 00 FF FB 00 03 B1 AA
+A5 5A 10 00 40 00 FF FB 00 03 00 00 00 FF FF 00 00 A8 AA
 ```
 
 Y17、Y16、TM-310 初始状态帧：
@@ -77,7 +77,7 @@ ESP32 接受当前型号支持的任何有效命令后，都会通过当前通�
 
 | 型号 | 支持模式 | 童锁命令 | 故障码 |
 | --- | --- | --- | --- |
-| 旧版/新版 Y05 | 制冷、制热 | 支持 `0x06` | `0x00`～`0x03` |
+| 旧版/新版 Y06 | 制冷、制热 | 支持 `0x06` | `0x00`～`0x03` |
 | Y17 | 冷藏、MAX、ECO、制热 | 不支持 | `0x00`～`0x07` |
 | Y16 | 冷藏、MAX、ECO | 不支持 | `0x00`～`0x07` |
 | TM-310 | 冷藏、MAX、ECO、制热 | 不支持 | `0x00`～`0x07` |
@@ -91,13 +91,13 @@ UART0 使用 115200 波特率。在 `idf.py monitor` 中输入 `help` 查看命�
 ```text
 status                         显示档位和完整状态
 power on|off|toggle            开关机
-lock on|off|toggle             Y05 童锁操作
+lock on|off|toggle             Y06 童锁操作
 mode cool|max|eco|heat|toggle  切换当前型号支持的模式
 unit c|f|toggle                切换温度单位
 target -5                      设置目标温度
 actual 3                       设置实际温度
 fault 0                        设置故障码
-voltage 1265                   设置电压为 12.65 V，仅非 Y05 型号
+voltage 1265                   设置电压为 12.65 V，仅非 Y06 型号
 ```
 
 日志标签主要为 `FRIDGE-BLE`、`FRIDGE-CONSOLE` 和 `PROFILE-SWITCH`。收到和回传的协议帧都会以十六进制打印。
@@ -107,16 +107,16 @@ voltage 1265                   设置电压为 12.65 V，仅非 Y05 型号
 其他任务仍可使用原有状态接口：
 
 ```c
-ble_tmy05_set_actual_temperature(25);
-ble_tmy05_set_fault(TMY05_FAULT_NTC_SHORT);
+ble_tmy06_set_actual_temperature(25);
+ble_tmy06_set_fault(TMY06_FAULT_NTC_SHORT);
 
-tmy05_state_t state;
-ble_tmy05_get_state(&state);
+tmy06_state_t state;
+ble_tmy06_get_state(&state);
 state.target_temperature = -10;
-ble_tmy05_set_state(&state);
+ble_tmy06_set_state(&state);
 ```
 
-非 Y05 档位可以设置百分之一伏单位的实际电压：
+非 Y06 档位可以设置百分之一伏单位的实际电压：
 
 ```c
 ble_fridge_set_actual_voltage(1265);  // 12.65 V
@@ -132,3 +132,11 @@ idf.py -p COMx flash monitor
 ```
 
 后续切换五种设备只需要长按 BOOT，不需要再次烧录。
+
+## Y06 氛围灯联调
+
+统一协议和非统一协议 Y06 均支持 0x07，四字节数据段为操作类型 + RGB：00 修改制冷颜色、01 修改制热颜色、10 常亮、11 呼吸。详细帧格式见 [Y06 协议](TM-Y06%20APP蓝牙通讯协议.md)。
+
+灯效和两套颜色保存到 NVS `y06_light/settings_v1`，两种 Y06 档位共用配置。设置完成后可断开 APP，用控制台 `mode` 切换制冷/制热验证自动切色，重启后确认配置仍保留。
+
+模拟器使用现有 GPIO48 板载 WS2812 预览常亮/呼吸，约 3 秒一个呼吸周期。`CONFIG_TMY06_AMBIENT_BOARD_PREVIEW` 可关闭板载预览；接实际冰箱灯控时，需要将 RGB 输出适配到真实硬件，不能直接假定外接灯也使用 GPIO48。

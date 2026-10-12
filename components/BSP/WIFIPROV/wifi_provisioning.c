@@ -795,7 +795,7 @@ static esp_err_t start_portal_services(void)
     g_portal_started = true;
     g_portal_starting = false;
     ESP_LOGI(TAG, "配网热点已开启: %s，密码: %s",
-             g_ap_ssid, CONFIG_TMY05_PROVISION_AP_PASSWORD);
+             g_ap_ssid, CONFIG_TMY06_PROVISION_AP_PASSWORD);
     ESP_LOGI(TAG, "若手机未自动弹出页面，请访问 %s", PORTAL_ADDRESS);
     return ESP_OK;
 }
@@ -1132,7 +1132,7 @@ esp_err_t wifi_provisioning_start(void)
     uint8_t mac[6];
     ESP_RETURN_ON_ERROR(esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP),
                         TAG, "Cannot read Wi-Fi MAC");
-    snprintf(g_ap_ssid, sizeof(g_ap_ssid), "TMY05-Setup-%02X%02X",
+    snprintf(g_ap_ssid, sizeof(g_ap_ssid), "TMY06-Setup-%02X%02X",
              mac[4], mac[5]);
 
     ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_APSTA),
@@ -1142,11 +1142,11 @@ esp_err_t wifi_provisioning_start(void)
     strlcpy((char *)access_point_config.ap.ssid, g_ap_ssid,
             sizeof(access_point_config.ap.ssid));
     strlcpy((char *)access_point_config.ap.password,
-            CONFIG_TMY05_PROVISION_AP_PASSWORD,
+            CONFIG_TMY06_PROVISION_AP_PASSWORD,
             sizeof(access_point_config.ap.password));
     access_point_config.ap.ssid_len = strlen(g_ap_ssid);
     access_point_config.ap.max_connection = 4;
-    access_point_config.ap.authmode = strlen(CONFIG_TMY05_PROVISION_AP_PASSWORD) >= 8U
+    access_point_config.ap.authmode = strlen(CONFIG_TMY06_PROVISION_AP_PASSWORD) >= 8U
                                           ? WIFI_AUTH_WPA2_PSK
                                           : WIFI_AUTH_OPEN;
     ESP_RETURN_ON_ERROR(esp_wifi_set_config(WIFI_IF_AP, &access_point_config),

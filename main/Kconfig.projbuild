@@ -1,42 +1,49 @@
-menu "TMY05 firmware settings"
+menu "TMY06 firmware settings"
 
-    config TMY05_FW_VERSION_MAJOR
+    config TMY06_AMBIENT_BOARD_PREVIEW
+        bool "Preview Y06 ambient light on onboard RGB LED (GPIO48)"
+        default y
+        help
+            Simulator preview using the existing onboard WS2812 driver.
+            Disable when integrating a refrigerator's separate light controller.
+
+    config TMY06_FW_VERSION_MAJOR
         int "Firmware major version"
         range 0 255
         default 1
 
-    config TMY05_FW_VERSION_MINOR
+    config TMY06_FW_VERSION_MINOR
         int "Firmware minor version"
         range 0 255
         default 0
 
-    config TMY05_FW_VERSION_PATCH
+    config TMY06_FW_VERSION_PATCH
         int "Firmware patch version"
         range 0 255
         default 4
 
-    config TMY05_OTA_RELEASE_BASE_URL
+    config TMY06_OTA_RELEASE_BASE_URL
         string "HTTPS immutable release-manifest base URL"
         default "https://app.temai.tech/ota-bin/releases"
         help
             Base URL for targeted A2 requests. The device appends
             /<modelId>/<major>.<minor>.<patch>.json.
 
-    config TMY05_PROVISION_AP_PASSWORD
+    config TMY06_PROVISION_AP_PASSWORD
         string "Provisioning access point password"
         default "12345678"
         help
-            WPA2 password for the TMY05-Setup-XXXX captive portal. It must have
+            WPA2 password for the TMY06-Setup-XXXX captive portal. It must have
             at least eight characters.
 
-    config TMY05_MQTT_BROKER_URI
+    config TMY06_MQTT_BROKER_URI
         string "Development MQTT broker URI"
         default "mqtt://8.138.244.51:1883"
         help
             MQTT broker used by the new-protocol profiles. The current default is
             the plaintext development broker and must not be used in production.
 
-    config TMY05_MQTT_ALLOW_TEST_SN
+    config TMY06_MQTT_ALLOW_TEST_SN
         bool "Allow built-in test SN when NVS SN is absent"
         default y
         help

@@ -10,7 +10,7 @@ set(src_dirs
             WIFIPROV
             TESLALINK
             MYNTC
-            # TM-Y05 BLE simulator and protocol sources
+            # TM-Y06 BLE simulator and protocol sources
             MYBLE
             )
 
