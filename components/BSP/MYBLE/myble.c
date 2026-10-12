@@ -495,7 +495,7 @@ static void process_complete_app_frame(phone_connection_t *connection,
                                                length,
                                                &snapshot,
                                                &command);
-    if (accepted && command == TMY06_COMMAND_SET_AMBIENT_LIGHT &&
+    if (accepted && g_profile_info->has_ambient_light &&
         memcmp(&previous.ambient, &snapshot.ambient, sizeof(snapshot.ambient)) != 0) {
         esp_err_t err = ambient_light_save(&snapshot.ambient);
         if (err != ESP_OK) {

@@ -367,6 +367,19 @@ static bool apply_control_value(const ble_sim_profile_info_t *info,
     }
 }
 
+static bool apply_ambient_value(const uint8_t *data, tmy06_state_t *state)
+{
+    uint8_t operation = data[0];
+    if (operation == 0x00U || operation == 0x01U) {
+        for (size_t i = 0; i < 3U; ++i) state->ambient.colors[operation][i] = data[1U + i];
+    } else if (operation == 0x10U || operation == 0x11U) {
+        state->ambient.effect = operation & 1U;
+    } else if (operation != 0xFFU) {
+        return false;
+    }
+    return true;
+}
+
 bool fridge_protocol_apply_app_frame(ble_sim_profile_t profile,
                                      const uint8_t *frame,
                                      size_t length,
@@ -380,46 +393,53 @@ bool fridge_protocol_apply_app_frame(ble_sim_profile_t profile,
     }
 
     tmy06_command_t received_command = (tmy06_command_t)frame[3];
-    if (received_command == TMY06_COMMAND_SET_AMBIENT_LIGHT) {
-        if (!info->has_ambient_light || length != TMY06_AMBIENT_FRAME_SIZE || frame[2] != 0x07U) return false;
-        uint8_t operation = frame[4];
-        if (operation == 0x00U || operation == 0x01U) {
-            for (size_t i = 0; i < 3U; ++i) state->ambient.colors[operation][i] = frame[5U + i];
-        } else if (operation == 0x10U || operation == 0x11U) {
-            state->ambient.effect = operation & 1U; /* RGB deliberately ignored. */
-        } else {
-            return false;
-        }
+    bool merged = info->has_ambient_light && length == TMY06_CONTROL_FRAME_SIZE && frame[2] == 0x0AU;
+    bool old_ambient = received_command == TMY06_COMMAND_SET_AMBIENT_LIGHT &&
+        info->has_ambient_light && length == TMY06_AMBIENT_FRAME_SIZE && frame[2] == 0x07U;
+    if (!merged && !old_ambient &&
+        (length != TMY06_APP_FRAME_SIZE || frame[2] != TMY06_APP_DATA_LENGTH)) return false;
+    if (received_command == TMY06_COMMAND_SET_AMBIENT_LIGHT && !merged && !old_ambient) return false;
+    // Validate and apply to a temporary state: a bad appended light operation
+    // must not partially apply the temperature, mode, power or unit change.
+    tmy06_state_t candidate = *state;
+    if (old_ambient) {
+        if (!apply_ambient_value(&frame[4], &candidate)) return false;
+        *state = candidate;
         if (command != NULL) *command = received_command;
         return true;
     }
-    if (length != TMY06_APP_FRAME_SIZE || frame[2] != TMY06_APP_DATA_LENGTH) return false;
     bool accepted = false;
 
     switch (received_command) {
     case TMY06_COMMAND_GET_STATE:
-        accepted = true;
+        accepted = !merged || frame[7] == 0xFFU; /* A query never changes settings. */
         break;
 
     case TMY06_COMMAND_SET_POWER:
     case TMY06_COMMAND_SET_MODE:
     case TMY06_COMMAND_SET_UNIT:
     case TMY06_COMMAND_SET_CHILD_LOCK:
-        accepted = apply_control_value(info, received_command, frame[4], state);
+        accepted = apply_control_value(info, received_command, frame[4], &candidate);
         break;
 
     case TMY06_COMMAND_SET_TARGET_TEMPERATURE:
-        state->target_temperature = (int16_t)(((uint16_t)frame[5] << 8U) |
+        candidate.target_temperature = (int16_t)(((uint16_t)frame[5] << 8U) |
                                                (uint16_t)frame[6]);
         accepted = true;
+        break;
+
+    case TMY06_COMMAND_SET_AMBIENT_LIGHT:
+        accepted = merged;
         break;
 
     default:
         break;
     }
 
-    if (accepted && command != NULL) {
-        *command = received_command;
+    if (accepted && merged) accepted = apply_ambient_value(&frame[7], &candidate);
+    if (accepted) {
+        *state = candidate;
+        if (command != NULL) *command = received_command;
     }
 
     return accepted;
