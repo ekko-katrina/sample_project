@@ -37,9 +37,8 @@ static int test_profile_cycle(void)
 static int test_initial_status_frames(void)
 {
     static const uint8_t expected_y06[] = {
-        0xA5, 0x5A, 0x10, 0x00, 0x40, 0x00,
-        0xFF, 0xFB, 0x00, 0x03, 0x00, 0x00, 0x00, 0xFF,
-        0xFF, 0x00, 0x00, 0xA8, 0xAA,
+        0xA5, 0x5A, 0x09, 0x00, 0x40, 0x00,
+        0xFF, 0xFB, 0x00, 0x03, 0xB1, 0xAA,
     };
     static const uint8_t expected_voltage_model[] = {
         0xA5, 0x5A, 0x0B, 0x00, 0x40, 0x00, 0xFF,
@@ -184,41 +183,31 @@ static int test_ota_frames(void)
     return 0;
 }
 
-static int test_merged_controls(void)
+static int test_separate_controls(void)
 {
     const ble_sim_profile_t profiles[] = {BLE_SIM_PROFILE_LEGACY_Y06, BLE_SIM_PROFILE_NEW_Y06};
     for (size_t p = 0; p < sizeof(profiles) / sizeof(profiles[0]); ++p) {
         tmy06_state_t state;
-        tmy06_command_t command;
         fridge_protocol_make_initial_state(profiles[p], &state);
-        uint8_t frame[] = {0xA5, 0x5A, 0x0A, 0x05, 0, 0, 8, 0xFF, 0, 0, 0, 0, 0xAA};
-        frame[11] = tmy06_protocol_checksum(frame, 11);
-        CHECK(fridge_protocol_apply_app_frame(profiles[p], frame, sizeof(frame), &state, &command));
-        CHECK(command == TMY06_COMMAND_SET_TARGET_TEMPERATURE && state.target_temperature == 8);
-        CHECK(state.ambient.effect == 0 && state.ambient.colors[0][2] == 255 && state.ambient.colors[1][0] == 255);
-        // A single ordinary mode command can also update the heating color.
-        frame[3] = 3; frame[4] = 4; frame[7] = 1; frame[8] = 0x12; frame[9] = 0x34; frame[10] = 0x56;
-        frame[11] = tmy06_protocol_checksum(frame, 11);
-        CHECK(fridge_protocol_apply_app_frame(profiles[p], frame, sizeof(frame), &state, NULL));
-        CHECK(state.mode == TMY06_MODE_HEATING && state.ambient.colors[1][0] == 0x12);
-        CHECK(state.ambient.colors[0][2] == 255);
-        // The lighting-only command ignores the first three control bytes.
-        frame[3] = 7; frame[4] = 0; frame[5] = 0; frame[6] = 0; frame[7] = 0x11;
-        frame[11] = tmy06_protocol_checksum(frame, 11);
-        CHECK(fridge_protocol_apply_app_frame(profiles[p], frame, sizeof(frame), &state, NULL));
-        CHECK(state.mode == TMY06_MODE_HEATING && state.target_temperature == 8 && state.ambient.effect == 1);
-        CHECK(state.ambient.colors[1][0] == 0x12);
-        // Invalid light operation rejects the entire temperature change.
-        frame[3] = 5; frame[6] = 99; frame[7] = 2;
-        frame[11] = tmy06_protocol_checksum(frame, 11);
-        CHECK(!fridge_protocol_apply_app_frame(profiles[p], frame, sizeof(frame), &state, NULL));
-        CHECK(state.target_temperature == 8 && state.ambient.effect == 1);
-        frame[3] = 1; frame[7] = 0;
-        frame[11] = tmy06_protocol_checksum(frame, 11);
-        CHECK(!fridge_protocol_apply_app_frame(profiles[p], frame, sizeof(frame), &state, NULL));
-        frame[7] = 0xFF; frame[11] = tmy06_protocol_checksum(frame, 11);
-        CHECK(fridge_protocol_apply_app_frame(profiles[p], frame, sizeof(frame), &state, NULL));
-        CHECK(!fridge_protocol_apply_app_frame(BLE_SIM_PROFILE_NEW_Y17, frame, sizeof(frame), &state, NULL));
+        tmy06_ambient_settings_t before = state.ambient;
+        uint8_t temperature[] = {0xA5, 0x5A, 0x06, 0x05, 0, 0, 8, 0, 0xAA};
+        temperature[7] = tmy06_protocol_checksum(temperature, 7);
+        CHECK(fridge_protocol_apply_app_frame(profiles[p], temperature, sizeof(temperature), &state, NULL));
+        CHECK(state.target_temperature == 8);
+        CHECK(bytes_equal((const uint8_t *)&before, (const uint8_t *)&state.ambient, sizeof(before)));
+        uint8_t merged[] = {0xA5, 0x5A, 0x0A, 0x05, 0, 0, 99, 0xFF, 0, 0, 0, 0, 0xAA};
+        merged[11] = tmy06_protocol_checksum(merged, 11);
+        CHECK(!fridge_protocol_apply_app_frame(profiles[p], merged, sizeof(merged), &state, NULL));
+        CHECK(state.target_temperature == 8);
+        uint8_t light[TMY06_AMBIENT_STATUS_FRAME_SIZE];
+        const uint8_t expected[] = {0xA5, 0x5A, 0x0A, 8, 0, 0, 0, 255, 255, 0, 0, 0xFD, 0xAA};
+        CHECK(tmy06_protocol_build_ambient_status_frame(profiles[p], &state, light, sizeof(light)) == sizeof(light));
+        CHECK(bytes_equal(light, expected, sizeof(light)));
+        CHECK(tmy06_protocol_build_ambient_status_frame(BLE_SIM_PROFILE_NEW_Y17, &state, light, sizeof(light)) == 0);
+        CHECK(tmy06_protocol_build_ambient_status_frame(profiles[p], &state, light, sizeof(light) - 1) == 0);
+        uint8_t fridge[TMY06_STATUS_FRAME_SIZE];
+        CHECK(fridge_protocol_build_status_frame(profiles[p], &state, fridge, sizeof(fridge)) == 12);
+        CHECK(fridge[3] == 0 && light[3] == 8);
     }
     return 0;
 }
@@ -270,9 +259,9 @@ static int test_ambient_operations(void)
         CHECK(!fridge_protocol_apply_app_frame(profiles[p], frame, sizeof(frame) - 1, &state, NULL));
         frame[8] = tmy06_protocol_checksum(frame, 8);
         CHECK(!fridge_protocol_apply_app_frame(BLE_SIM_PROFILE_NEW_Y17, frame, sizeof(frame), &state, NULL));
-        uint8_t status[TMY06_STATUS_FRAME_SIZE];
-        CHECK(fridge_protocol_build_status_frame(profiles[p], &state, status, sizeof(status)) == sizeof(status));
-        CHECK(status[10] == 1 && status[11] == 0x12 && status[14] == 0);
+        uint8_t status[TMY06_AMBIENT_STATUS_FRAME_SIZE];
+        CHECK(tmy06_protocol_build_ambient_status_frame(profiles[p], &state, status, sizeof(status)) == sizeof(status));
+        CHECK(status[3] == 8 && status[4] == 1 && status[5] == 0x12 && status[8] == 0);
         CHECK(tmy06_protocol_validate_frame(status, sizeof(status)));
     }
     return 0;
@@ -298,7 +287,7 @@ int protocol_run_tests(void)
     }
     result = test_ambient_operations();
     if (result != 0) return result;
-    result = test_merged_controls();
+    result = test_separate_controls();
     if (result != 0) return result;
     return test_ota_frames();
 }

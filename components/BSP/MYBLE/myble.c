@@ -355,6 +355,17 @@ static void notify_all_subscribers(const char *reason, bool proactive)
     }
 }
 
+static void notify_ambient_subscribers(const char *reason)
+{
+    uint8_t frame[TMY06_AMBIENT_STATUS_FRAME_SIZE];
+    tmy06_state_t snapshot = get_state_snapshot();
+    size_t length = tmy06_protocol_build_ambient_status_frame(g_active_profile, &snapshot, frame, sizeof(frame));
+    if (length == 0U) return;
+    ESP_LOGI(TAG, "氛围灯状态上报：%s", reason);
+    ESP_LOG_BUFFER_HEX_LEVEL(TAG, frame, length, ESP_LOG_INFO);
+    for (size_t i = 0; i < MAX_PHONE_CONNECTIONS; ++i) notify_connection(&g_connections[i], frame, length);
+}
+
 void ble_ota_report_status(tmy06_ota_status_t status, uint8_t information)
 {
     uint8_t frame[TMY06_OTA_STATUS_FRAME_SIZE];
@@ -500,7 +511,7 @@ static void process_complete_app_frame(phone_connection_t *connection,
         esp_err_t err = ambient_light_save(&snapshot.ambient);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "氛围灯保存失败：%s", esp_err_to_name(err));
-            notify_all_subscribers("氛围灯保存失败，回传原设置", false);
+            notify_ambient_subscribers("氛围灯保存失败，回传原设置");
             return;
         }
     }
@@ -518,11 +529,14 @@ static void process_complete_app_frame(phone_connection_t *connection,
         return;
     }
 
-    report_state_change(&previous, &snapshot);
+    if (command != TMY06_COMMAND_SET_AMBIENT_LIGHT) report_state_change(&previous, &snapshot);
 
     log_app_command(command, &snapshot);
     if (command == TMY06_COMMAND_GET_STATE) {
         notify_all_subscribers("App获取全状态命令", false);
+        notify_ambient_subscribers("App获取灯光状态");
+    } else if (command == TMY06_COMMAND_SET_AMBIENT_LIGHT) {
+        notify_ambient_subscribers("收到App灯光控制命令");
     } else {
         notify_all_subscribers("收到App控制命令", true);
     }

@@ -11,10 +11,10 @@ extern "C" {
 
 #define TMY06_APP_FRAME_SIZE 9U
 #define TMY06_AMBIENT_FRAME_SIZE 10U
-#define TMY06_CONTROL_FRAME_SIZE 13U
-#define TMY06_STATUS_FRAME_SIZE 19U
+#define TMY06_STATUS_FRAME_SIZE 12U
+#define TMY06_AMBIENT_STATUS_FRAME_SIZE 13U
 #define FRIDGE_STATUS_FRAME_SIZE 14U
-#define FRIDGE_MAX_STATUS_FRAME_SIZE TMY06_STATUS_FRAME_SIZE
+#define FRIDGE_MAX_STATUS_FRAME_SIZE FRIDGE_STATUS_FRAME_SIZE
 #define TMY06_OTA_QUERY_COMMAND_FRAME_SIZE 7U
 #define TMY06_OTA_TARGET_COMMAND_FRAME_SIZE 10U
 #define TMY06_OTA_VERSION_FRAME_SIZE 10U
@@ -100,6 +100,7 @@ typedef enum {
     TMY06_COMMAND_SET_TARGET_TEMPERATURE = 0x05,
     TMY06_COMMAND_SET_CHILD_LOCK = 0x06,
     TMY06_COMMAND_SET_AMBIENT_LIGHT = 0x07,
+    TMY06_COMMAND_REPORT_AMBIENT_LIGHT = 0x08,
 } tmy06_command_t;
 
 typedef enum {
@@ -147,6 +148,9 @@ bool fridge_protocol_validate_state(ble_sim_profile_t profile,
 bool fridge_protocol_change_unit(tmy06_state_t *state,
                                  tmy06_temperature_unit_t unit);
 const uint8_t *tmy06_protocol_active_ambient_color(const tmy06_state_t *state);
+size_t tmy06_protocol_build_ambient_status_frame(ble_sim_profile_t profile,
+                                                const tmy06_state_t *state,
+                                                uint8_t *frame, size_t capacity);
 
 uint8_t tmy06_protocol_checksum(const uint8_t *data, size_t length);
 bool tmy06_protocol_validate_frame(const uint8_t *frame, size_t length);

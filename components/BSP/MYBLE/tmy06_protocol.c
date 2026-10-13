@@ -4,7 +4,7 @@
 #define TMY06_FRAME_HEADER_LOW 0x5AU
 #define TMY06_FRAME_TAIL 0xAAU
 #define TMY06_APP_DATA_LENGTH 0x06U
-#define TMY06_STATUS_DATA_LENGTH 0x10U
+#define TMY06_STATUS_DATA_LENGTH 0x09U
 #define FRIDGE_STATUS_DATA_LENGTH 0x0BU
 #define TMY06_STATUS_COMMAND 0x00U
 #define MODE_MASK(mode) (1U << (unsigned int)(mode))
@@ -259,7 +259,7 @@ bool tmy06_protocol_parse_ota_request(const uint8_t *frame,
     return true;
 }
 
-static size_t build_ota_response(uint8_t command,
+static size_t build_response_frame(uint8_t command,
                                  const uint8_t *payload,
                                  size_t payload_length,
                                  uint8_t *frame,
@@ -292,7 +292,7 @@ size_t tmy06_protocol_build_ota_version_frame(uint8_t model_id,
                                               size_t capacity)
 {
     const uint8_t payload[] = {model_id, major, minor, patch};
-    return build_ota_response(TMY06_OTA_COMMAND_VERSION,
+    return build_response_frame(TMY06_OTA_COMMAND_VERSION,
                               payload, sizeof(payload), frame, capacity);
 }
 
@@ -307,7 +307,7 @@ size_t tmy06_protocol_build_ota_status_frame(tmy06_ota_status_t status,
     }
 
     const uint8_t payload[] = {(uint8_t)status, information};
-    return build_ota_response(TMY06_OTA_COMMAND_STATUS,
+    return build_response_frame(TMY06_OTA_COMMAND_STATUS,
                               payload, sizeof(payload), frame, capacity);
 }
 
@@ -374,7 +374,7 @@ static bool apply_ambient_value(const uint8_t *data, tmy06_state_t *state)
         for (size_t i = 0; i < 3U; ++i) state->ambient.colors[operation][i] = data[1U + i];
     } else if (operation == 0x10U || operation == 0x11U) {
         state->ambient.effect = operation & 1U;
-    } else if (operation != 0xFFU) {
+    } else {
         return false;
     }
     return true;
@@ -393,16 +393,14 @@ bool fridge_protocol_apply_app_frame(ble_sim_profile_t profile,
     }
 
     tmy06_command_t received_command = (tmy06_command_t)frame[3];
-    bool merged = info->has_ambient_light && length == TMY06_CONTROL_FRAME_SIZE && frame[2] == 0x0AU;
-    bool old_ambient = received_command == TMY06_COMMAND_SET_AMBIENT_LIGHT &&
+    bool ambient_command = received_command == TMY06_COMMAND_SET_AMBIENT_LIGHT &&
         info->has_ambient_light && length == TMY06_AMBIENT_FRAME_SIZE && frame[2] == 0x07U;
-    if (!merged && !old_ambient &&
+    if (!ambient_command &&
         (length != TMY06_APP_FRAME_SIZE || frame[2] != TMY06_APP_DATA_LENGTH)) return false;
-    if (received_command == TMY06_COMMAND_SET_AMBIENT_LIGHT && !merged && !old_ambient) return false;
-    // Validate and apply to a temporary state: a bad appended light operation
-    // must not partially apply the temperature, mode, power or unit change.
+    if (received_command == TMY06_COMMAND_SET_AMBIENT_LIGHT && !ambient_command) return false;
+    // Keep invalid commands from partially changing the saved state.
     tmy06_state_t candidate = *state;
-    if (old_ambient) {
+    if (ambient_command) {
         if (!apply_ambient_value(&frame[4], &candidate)) return false;
         *state = candidate;
         if (command != NULL) *command = received_command;
@@ -412,7 +410,7 @@ bool fridge_protocol_apply_app_frame(ble_sim_profile_t profile,
 
     switch (received_command) {
     case TMY06_COMMAND_GET_STATE:
-        accepted = !merged || frame[7] == 0xFFU; /* A query never changes settings. */
+        accepted = true;
         break;
 
     case TMY06_COMMAND_SET_POWER:
@@ -428,15 +426,10 @@ bool fridge_protocol_apply_app_frame(ble_sim_profile_t profile,
         accepted = true;
         break;
 
-    case TMY06_COMMAND_SET_AMBIENT_LIGHT:
-        accepted = merged;
-        break;
-
     default:
         break;
     }
 
-    if (accepted && merged) accepted = apply_ambient_value(&frame[7], &candidate);
     if (accepted) {
         *state = candidate;
         if (command != NULL) *command = received_command;
@@ -499,16 +492,24 @@ size_t fridge_protocol_build_status_frame(ble_sim_profile_t profile,
         frame[12] = tmy06_protocol_checksum(frame, 12U);
         frame[13] = TMY06_FRAME_TAIL;
     } else {
-        frame[10] = state->ambient.effect;
-        for (size_t i = 0; i < 3U; ++i) {
-            frame[11U + i] = state->ambient.colors[0][i];
-            frame[14U + i] = state->ambient.colors[1][i];
-        }
-        frame[17] = tmy06_protocol_checksum(frame, 17U);
-        frame[18] = TMY06_FRAME_TAIL;
+        frame[10] = tmy06_protocol_checksum(frame, 10U);
+        frame[11] = TMY06_FRAME_TAIL;
     }
 
     return frame_size;
+}
+
+size_t tmy06_protocol_build_ambient_status_frame(ble_sim_profile_t profile,
+                                                const tmy06_state_t *state,
+                                                uint8_t *frame, size_t capacity)
+{
+    if (!ble_sim_profile_info(profile)->has_ambient_light || state == NULL || state->ambient.effect > 1U) return 0;
+    uint8_t payload[7] = {state->ambient.effect};
+    for (size_t i = 0; i < 3U; ++i) {
+        payload[1U + i] = state->ambient.colors[0][i];
+        payload[4U + i] = state->ambient.colors[1][i];
+    }
+    return build_response_frame(TMY06_COMMAND_REPORT_AMBIENT_LIGHT, payload, sizeof(payload), frame, capacity);
 }
 
 bool tmy06_protocol_apply_app_frame(const uint8_t *frame,
