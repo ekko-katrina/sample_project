@@ -7,6 +7,10 @@
 #include "freertos/task.h"
 #include "led.h"
 #include "esp_log.h"
+
+// Apply brightness only to the output; saved RGB values keep their full range.
+#define AMBIENT_MAX_SCALE 153U // 60% of 255
+#define AMBIENT_MIN_SCALE 51U  // 20% of 255
 #endif
 
 esp_err_t ambient_light_load(tmy06_ambient_settings_t *settings)
@@ -48,8 +52,9 @@ static void ambient_light_task(void *arg)
         if (ble_tmy06_get_state(&state)) {
             const uint8_t *rgb = tmy06_protocol_active_ambient_color(&state);
             // One breathing cycle is 3 seconds; steady output ignores the phase.
-            unsigned int scale = state.ambient.effect == 0U ? 255U
-                : (phase < 50U ? phase * 255U / 50U : (100U - phase) * 255U / 50U);
+            unsigned int ramp = phase < 50U ? phase : 100U - phase;
+            unsigned int scale = state.ambient.effect == 0U ? AMBIENT_MAX_SCALE
+                : AMBIENT_MIN_SCALE + ramp * (AMBIENT_MAX_SCALE - AMBIENT_MIN_SCALE) / 50U;
             if (state.power == TMY06_POWER_OFF) scale = 0;
             uint8_t output[3];
             bool changed = false;
