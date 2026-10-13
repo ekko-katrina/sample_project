@@ -219,7 +219,7 @@ static int test_ambient_operations(void)
         tmy06_state_t state;
         tmy06_command_t command;
         fridge_protocol_make_initial_state(profiles[p], &state);
-        uint8_t frame[] = {0xA5, 0x5A, 0x07, 0x07, 0x00, 0x12, 0x34, 0x56, 0, 0xAA};
+        uint8_t frame[] = {0xA5, 0x5A, 0x07, 0x07, 0x01, 0x12, 0x34, 0x56, 0, 0xAA};
         frame[8] = tmy06_protocol_checksum(frame, 8);
         CHECK(fridge_protocol_apply_app_frame(profiles[p], frame, sizeof(frame), &state, &command));
         CHECK(command == TMY06_COMMAND_SET_AMBIENT_LIGHT);
@@ -227,7 +227,7 @@ static int test_ambient_operations(void)
         CHECK(bytes_equal(state.ambient.colors[0], &frame[5], 3));
         CHECK(state.ambient.colors[1][0] == 255);
 
-        frame[4] = 0x01; frame[5] = 0xAB; frame[6] = 0xCD; frame[7] = 0xEF;
+        frame[4] = 0x02; frame[5] = 0xAB; frame[6] = 0xCD; frame[7] = 0xEF;
         frame[8] = tmy06_protocol_checksum(frame, 8);
         CHECK(fridge_protocol_apply_app_frame(profiles[p], frame, sizeof(frame), &state, NULL));
         CHECK(state.mode == TMY06_MODE_COOLING && state.ambient.effect == 0);
@@ -245,16 +245,22 @@ static int test_ambient_operations(void)
             CHECK(state.mode == TMY06_MODE_HEATING);
         }
         // Black is an actual color, not a no-op, and cannot reset the effect.
-        frame[4] = 0x01; frame[5] = 0; frame[6] = 0; frame[7] = 0;
+        frame[4] = 0x02; frame[5] = 0; frame[6] = 0; frame[7] = 0;
         frame[8] = tmy06_protocol_checksum(frame, 8);
         CHECK(fridge_protocol_apply_app_frame(profiles[p], frame, sizeof(frame), &state, NULL));
         CHECK(state.ambient.effect == 1 && state.ambient.colors[1][0] == 0);
         CHECK(state.ambient.colors[0][0] == 0x12);
         before = state.ambient;
-        frame[4] = 0x02; frame[8] = tmy06_protocol_checksum(frame, 8);
+        // Query ignores RGB and preserves both the refrigerator and lighting state.
+        tmy06_state_t before_query = state;
+        frame[4] = 0; frame[5] = 123; frame[6] = 45; frame[7] = 67;
+        frame[8] = tmy06_protocol_checksum(frame, 8);
+        CHECK(fridge_protocol_apply_app_frame(profiles[p], frame, sizeof(frame), &state, NULL));
+        CHECK(bytes_equal((const uint8_t *)&before_query, (const uint8_t *)&state, sizeof(state)));
+        frame[4] = 0x03; frame[8] = tmy06_protocol_checksum(frame, 8);
         CHECK(!fridge_protocol_apply_app_frame(profiles[p], frame, sizeof(frame), &state, NULL));
         CHECK(bytes_equal((const uint8_t *)&before, (const uint8_t *)&state.ambient, sizeof(before)));
-        frame[4] = 0x00; frame[8] = tmy06_protocol_checksum(frame, 8) ^ 1;
+        frame[4] = 0x01; frame[8] = tmy06_protocol_checksum(frame, 8) ^ 1;
         CHECK(!fridge_protocol_apply_app_frame(profiles[p], frame, sizeof(frame), &state, NULL));
         CHECK(!fridge_protocol_apply_app_frame(profiles[p], frame, sizeof(frame) - 1, &state, NULL));
         frame[8] = tmy06_protocol_checksum(frame, 8);

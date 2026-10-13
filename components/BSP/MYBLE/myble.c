@@ -506,7 +506,7 @@ static void process_complete_app_frame(phone_connection_t *connection,
                                                length,
                                                &snapshot,
                                                &command);
-    if (accepted && g_profile_info->has_ambient_light &&
+    if (accepted && command == TMY06_COMMAND_SET_AMBIENT_LIGHT && frame[4] != TMY06_AMBIENT_QUERY_OPERATION &&
         memcmp(&previous.ambient, &snapshot.ambient, sizeof(snapshot.ambient)) != 0) {
         esp_err_t err = ambient_light_save(&snapshot.ambient);
         if (err != ESP_OK) {
@@ -531,12 +531,13 @@ static void process_complete_app_frame(phone_connection_t *connection,
 
     if (command != TMY06_COMMAND_SET_AMBIENT_LIGHT) report_state_change(&previous, &snapshot);
 
-    log_app_command(command, &snapshot);
+    bool ambient_query = command == TMY06_COMMAND_SET_AMBIENT_LIGHT && frame[4] == TMY06_AMBIENT_QUERY_OPERATION;
+    if (ambient_query) ESP_LOGI(TAG, "收到App命令：仅查询灯光状态");
+    else log_app_command(command, &snapshot);
     if (command == TMY06_COMMAND_GET_STATE) {
         notify_all_subscribers("App获取全状态命令", false);
-        notify_ambient_subscribers("App获取灯光状态");
     } else if (command == TMY06_COMMAND_SET_AMBIENT_LIGHT) {
-        notify_ambient_subscribers("收到App灯光控制命令");
+        notify_ambient_subscribers(ambient_query ? "App查询灯光状态" : "收到App灯光控制命令");
     } else {
         notify_all_subscribers("收到App控制命令", true);
     }

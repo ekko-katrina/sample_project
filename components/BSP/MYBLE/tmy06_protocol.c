@@ -370,10 +370,13 @@ static bool apply_control_value(const ble_sim_profile_info_t *info,
 static bool apply_ambient_value(const uint8_t *data, tmy06_state_t *state)
 {
     uint8_t operation = data[0];
-    if (operation == 0x00U || operation == 0x01U) {
-        for (size_t i = 0; i < 3U; ++i) state->ambient.colors[operation][i] = data[1U + i];
+    if (operation == 0x01U || operation == 0x02U) {
+        for (size_t i = 0; i < 3U; ++i) state->ambient.colors[operation - 1U][i] = data[1U + i];
     } else if (operation == 0x10U || operation == 0x11U) {
         state->ambient.effect = operation & 1U;
+    } else if (operation == TMY06_AMBIENT_QUERY_OPERATION) {
+        // Query only: ignore RGB and never modify colors or effect.
+        return true;
     } else {
         return false;
     }
