@@ -92,7 +92,7 @@ static void print_state(const char *prefix, const tmy06_state_t *state)
     if (profile->has_ambient_light) {
         const uint8_t *active = tmy06_protocol_active_ambient_color(state);
         printf("氛围灯=%s，制冷=#%02X%02X%02X，制热=#%02X%02X%02X，当前=#%02X%02X%02X，",
-               state->ambient.effect ? "呼吸" : "常亮",
+               state->ambient.disabled ? "关闭" : (state->ambient.effect ? "呼吸" : "常亮"),
                state->ambient.colors[0][0], state->ambient.colors[0][1], state->ambient.colors[0][2],
                state->ambient.colors[1][0], state->ambient.colors[1][1], state->ambient.colors[1][2],
                active[0], active[1], active[2]);

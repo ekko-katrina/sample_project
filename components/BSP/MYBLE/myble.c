@@ -232,7 +232,7 @@ static void log_app_command(tmy06_command_t command, const tmy06_state_t *state)
         break;
     case TMY06_COMMAND_SET_AMBIENT_LIGHT:
         ESP_LOGI(TAG, "氛围灯已保存：灯效=%s，制冷=#%02X%02X%02X，制热=#%02X%02X%02X",
-                 state->ambient.effect ? "呼吸" : "常亮",
+                 state->ambient.disabled ? "关闭" : (state->ambient.effect ? "呼吸" : "常亮"),
                  state->ambient.colors[0][0], state->ambient.colors[0][1], state->ambient.colors[0][2],
                  state->ambient.colors[1][0], state->ambient.colors[1][1], state->ambient.colors[1][2]);
         break;

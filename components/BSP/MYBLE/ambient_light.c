@@ -19,19 +19,21 @@ esp_err_t ambient_light_load(tmy06_ambient_settings_t *settings)
     nvs_handle_t handle;
     esp_err_t err = nvs_open("y06_light", NVS_READONLY, &handle);
     if (err != ESP_OK) return err;
-    tmy06_ambient_settings_t saved;
+    tmy06_ambient_settings_t saved = {0};
     size_t size = sizeof(saved);
     err = nvs_get_blob(handle, "settings_v1", &saved, &size);
     nvs_close(handle);
     if (err != ESP_OK) return err;
-    if (size != sizeof(saved) || saved.effect > 1U) return ESP_ERR_INVALID_STATE;
+    // Legacy settings contain only effect + six RGB bytes; default to enabled.
+    if ((size != sizeof(saved) && size != offsetof(tmy06_ambient_settings_t, disabled)) ||
+        saved.effect > 1U || saved.disabled > 1U) return ESP_ERR_INVALID_STATE;
     *settings = saved;
     return ESP_OK;
 }
 
 esp_err_t ambient_light_save(const tmy06_ambient_settings_t *settings)
 {
-    if (settings == NULL || settings->effect > 1U) return ESP_ERR_INVALID_ARG;
+    if (settings == NULL || settings->effect > 1U || settings->disabled > 1U) return ESP_ERR_INVALID_ARG;
     nvs_handle_t handle;
     esp_err_t err = nvs_open("y06_light", NVS_READWRITE, &handle);
     if (err != ESP_OK) return err;
@@ -55,7 +57,7 @@ static void ambient_light_task(void *arg)
             unsigned int ramp = phase < 50U ? phase : 100U - phase;
             unsigned int scale = state.ambient.effect == 0U ? AMBIENT_MAX_SCALE
                 : AMBIENT_MIN_SCALE + ramp * (AMBIENT_MAX_SCALE - AMBIENT_MIN_SCALE) / 50U;
-            if (state.power == TMY06_POWER_OFF) scale = 0;
+            if (state.power == TMY06_POWER_OFF || state.ambient.disabled) scale = 0;
             uint8_t output[3];
             bool changed = false;
             for (size_t i = 0; i < 3U; ++i) {

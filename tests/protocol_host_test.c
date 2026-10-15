@@ -269,6 +269,39 @@ static int test_ambient_operations(void)
         CHECK(tmy06_protocol_build_ambient_status_frame(profiles[p], &state, status, sizeof(status)) == sizeof(status));
         CHECK(status[3] == 8 && status[4] == 1 && status[5] == 0x12 && status[8] == 0);
         CHECK(tmy06_protocol_validate_frame(status, sizeof(status)));
+        // Independent power retains both colors and the last effect, even with nonzero RGB.
+        before = state.ambient;
+        for (unsigned int repeat = 0; repeat < 2; ++repeat) {
+            frame[4] = TMY06_AMBIENT_POWER_OFF; frame[5] = 123;
+            frame[8] = tmy06_protocol_checksum(frame, 8);
+            CHECK(fridge_protocol_apply_app_frame(profiles[p], frame, sizeof(frame), &state, NULL));
+            CHECK(state.ambient.disabled == 1 && state.ambient.effect == before.effect);
+            CHECK(bytes_equal(&state.ambient.colors[0][0], &before.colors[0][0], 6));
+            CHECK(tmy06_protocol_build_ambient_status_frame(profiles[p], &state, status, sizeof(status)) == sizeof(status));
+            CHECK(status[4] == TMY06_AMBIENT_EFFECT_OFF);
+            CHECK(tmy06_protocol_validate_frame(status, sizeof(status)));
+        }
+        tmy06_state_t off_state = state;
+        frame[4] = 0; frame[8] = tmy06_protocol_checksum(frame, 8);
+        CHECK(fridge_protocol_apply_app_frame(profiles[p], frame, sizeof(frame), &state, NULL));
+        CHECK(bytes_equal((const uint8_t *)&off_state, (const uint8_t *)&state, sizeof(state)));
+        // Changing effect/color while off saves the setting without enabling the output.
+        frame[4] = 0x10; frame[8] = tmy06_protocol_checksum(frame, 8);
+        CHECK(fridge_protocol_apply_app_frame(profiles[p], frame, sizeof(frame), &state, NULL));
+        CHECK(state.ambient.disabled == 1 && state.ambient.effect == 0);
+        frame[4] = 1; frame[8] = tmy06_protocol_checksum(frame, 8);
+        CHECK(fridge_protocol_apply_app_frame(profiles[p], frame, sizeof(frame), &state, NULL));
+        CHECK(state.ambient.disabled == 1 && state.ambient.colors[0][0] == 123);
+        state.mode = TMY06_MODE_COOLING;
+        for (unsigned int repeat = 0; repeat < 2; ++repeat) {
+            frame[4] = TMY06_AMBIENT_POWER_ON; frame[8] = tmy06_protocol_checksum(frame, 8);
+            CHECK(fridge_protocol_apply_app_frame(profiles[p], frame, sizeof(frame), &state, NULL));
+            CHECK(state.ambient.disabled == 0 && state.ambient.effect == 0);
+            CHECK(state.power == off_state.power && state.mode == TMY06_MODE_COOLING);
+            CHECK(state.ambient.colors[0][0] == 123);
+            CHECK(tmy06_protocol_build_ambient_status_frame(profiles[p], &state, status, sizeof(status)) == sizeof(status));
+            CHECK(status[4] == 0 && status[5] == 123);
+        }
     }
     return 0;
 }

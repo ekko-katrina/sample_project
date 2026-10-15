@@ -33,7 +33,7 @@ esp_err_t nvs_commit(nvs_handle_t handle)
 {
     (void)handle;
     if (fail_commit) return ESP_ERR_NO_MEM;
-    copy_bytes(&stored, &pending, sizeof(stored)); present = true; return ESP_OK;
+    copy_bytes(&stored, &pending, sizeof(stored)); stored_size = sizeof(stored); present = true; return ESP_OK;
 }
 void nvs_close(nvs_handle_t handle) { (void)handle; }
 
@@ -42,19 +42,26 @@ int mainCRTStartup(void)
     tmy06_ambient_settings_t config = {.effect = 0, .colors = {{0, 0, 255}, {255, 0, 0}}};
     CHECK(ambient_light_load(&config) == ESP_ERR_NVS_NOT_FOUND);
     CHECK(config.colors[0][2] == 255);
-    config.effect = 1; config.colors[0][0] = 42;
+    config.effect = 1; config.colors[0][0] = 42; config.disabled = 1;
     CHECK(ambient_light_save(&config) == ESP_OK);
     // Simulate a fresh boot, then restore both colors and the shared effect.
     tmy06_ambient_settings_t rebooted = {0};
     CHECK(ambient_light_load(&rebooted) == ESP_OK);
     CHECK(rebooted.effect == 1 && rebooted.colors[0][0] == 42 && rebooted.colors[0][2] == 255);
     CHECK(rebooted.colors[1][0] == 255);
+    CHECK(rebooted.disabled == 1);
+    // Old seven-byte blobs keep the colors/effect and migrate to enabled.
+    stored_size = offsetof(tmy06_ambient_settings_t, disabled);
+    CHECK(ambient_light_load(&rebooted) == ESP_OK && rebooted.disabled == 0);
+    stored_size = sizeof(stored);
     fail_commit = true; config.effect = 0;
     CHECK(ambient_light_save(&config) != ESP_OK);
     CHECK(ambient_light_load(&rebooted) == ESP_OK && rebooted.effect == 1);
     stored.effect = 2;
     CHECK(ambient_light_load(&rebooted) == ESP_ERR_INVALID_STATE && rebooted.effect == 1);
-    stored.effect = 0; stored_size = sizeof(stored) - 1;
+    stored.effect = 0; stored.disabled = 2;
+    CHECK(ambient_light_load(&rebooted) == ESP_ERR_INVALID_STATE && rebooted.effect == 1);
+    stored.disabled = 0; stored_size = sizeof(stored) - 2;
     CHECK(ambient_light_load(&rebooted) == ESP_ERR_INVALID_STATE && rebooted.effect == 1);
     return 0;
 }

@@ -12,6 +12,9 @@ extern "C" {
 #define TMY06_APP_FRAME_SIZE 9U
 #define TMY06_AMBIENT_FRAME_SIZE 10U
 #define TMY06_AMBIENT_QUERY_OPERATION 0x00U
+#define TMY06_AMBIENT_POWER_ON 0xF0U
+#define TMY06_AMBIENT_POWER_OFF 0xF1U
+#define TMY06_AMBIENT_EFFECT_OFF 0xFFU
 #define TMY06_STATUS_FRAME_SIZE 12U
 #define TMY06_AMBIENT_STATUS_FRAME_SIZE 13U
 #define FRIDGE_STATUS_FRAME_SIZE 14U
@@ -79,6 +82,7 @@ typedef enum {
 typedef struct {
     uint8_t effect; /* 0: steady, 1: breathing; shared by both colors. */
     uint8_t colors[2][3]; /* cooling RGB, heating RGB */
+    uint8_t disabled; /* 0: enabled (legacy default), 1: off; retain effect/colors. */
 } tmy06_ambient_settings_t;
 
 typedef struct {

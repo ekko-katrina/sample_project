@@ -136,7 +136,7 @@ bool fridge_protocol_validate_state(ble_sim_profile_t profile,
         (info->supported_mode_mask & MODE_MASK(state->mode)) == 0U ||
         state->child_lock > TMY06_CHILD_LOCK_ON ||
         state->fault_code > info->maximum_fault_code ||
-        (info->has_ambient_light && state->ambient.effect > 1U)) {
+        (info->has_ambient_light && (state->ambient.effect > 1U || state->ambient.disabled > 1U))) {
         return false;
     }
 
@@ -374,6 +374,10 @@ static bool apply_ambient_value(const uint8_t *data, tmy06_state_t *state)
         for (size_t i = 0; i < 3U; ++i) state->ambient.colors[operation - 1U][i] = data[1U + i];
     } else if (operation == 0x10U || operation == 0x11U) {
         state->ambient.effect = operation & 1U;
+    } else if (operation == TMY06_AMBIENT_POWER_ON) {
+        state->ambient.disabled = 0U;
+    } else if (operation == TMY06_AMBIENT_POWER_OFF) {
+        state->ambient.disabled = 1U;
     } else if (operation == TMY06_AMBIENT_QUERY_OPERATION) {
         // Query only: ignore RGB and never modify colors or effect.
         return true;
@@ -506,8 +510,8 @@ size_t tmy06_protocol_build_ambient_status_frame(ble_sim_profile_t profile,
                                                 const tmy06_state_t *state,
                                                 uint8_t *frame, size_t capacity)
 {
-    if (!ble_sim_profile_info(profile)->has_ambient_light || state == NULL || state->ambient.effect > 1U) return 0;
-    uint8_t payload[7] = {state->ambient.effect};
+    if (!ble_sim_profile_info(profile)->has_ambient_light || state == NULL || state->ambient.effect > 1U || state->ambient.disabled > 1U) return 0;
+    uint8_t payload[7] = {state->ambient.disabled ? TMY06_AMBIENT_EFFECT_OFF : state->ambient.effect};
     for (size_t i = 0; i < 3U; ++i) {
         payload[1U + i] = state->ambient.colors[0][i];
         payload[4U + i] = state->ambient.colors[1][i];
