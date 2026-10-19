@@ -16,6 +16,10 @@ void ble_init(ble_sim_profile_t profile);
 
 void ble_ota_set_start_handler(ble_ota_start_handler_t handler);
 
+/* MQTT supplies its resolved SN (including the development fallback), so BLE
+ * identity and the broker always use the same device identity. */
+void ble_set_mqtt_sn(const char *sn);
+
 void ble_ota_report_status(tmy06_ota_status_t status, uint8_t information);
 
 ble_sim_profile_t ble_sim_get_active_profile(void);

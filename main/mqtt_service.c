@@ -774,6 +774,7 @@ esp_err_t mqtt_service_init(void)
     if (err != ESP_OK) {
         return err;
     }
+    ble_set_mqtt_sn(g_sn);
     if (!make_topics()) {
         return ESP_ERR_INVALID_SIZE;
     }

@@ -53,6 +53,7 @@ static const ble_sim_profile_info_t *g_profile_info;
 static ble_ota_start_handler_t g_ota_start_handler;
 static ble_state_change_handler_t g_state_change_handler;
 static char g_device_name[32];
+static char g_mqtt_sn[65];
 /* AD type 0x16 contains its UUID first, in little-endian byte order. */
 static uint8_t g_service_data[] = {0xF0, 0xFF, 0x54, 0x4D, 0x01, 0x04};
 
@@ -390,6 +391,36 @@ void ble_ota_set_start_handler(ble_ota_start_handler_t handler)
     g_ota_start_handler = handler;
 }
 
+void ble_set_mqtt_sn(const char *sn)
+{
+    portENTER_CRITICAL(&g_state_lock);
+    strlcpy(g_mqtt_sn, sn != NULL ? sn : "", sizeof(g_mqtt_sn));
+    portEXIT_CRITICAL(&g_state_lock);
+}
+
+static bool process_identity_frame(phone_connection_t *connection,
+                                   const uint8_t *request, size_t length)
+{
+    if (g_profile_info->is_legacy || length < 4U || request[3] != 0xD0U) return false;
+    if (length != 8U || (request[4] == 0U && request[5] == 0U)) return true;
+    uint8_t response[74] = {0xA5, 0x5A, 0, 0xD1, request[4], request[5], 0, 0};
+    char sn[65];
+    portENTER_CRITICAL(&g_state_lock);
+    memcpy(sn, g_mqtt_sn, sizeof(sn));
+    portEXIT_CRITICAL(&g_state_lock);
+    size_t sn_length = strlen(sn);
+    response[2] = (uint8_t)(7U + sn_length);
+    response[6] = sn_length == 0U ? 1U : 0U;
+    response[7] = (uint8_t)sn_length;
+    memcpy(response + 8U, sn, sn_length);
+    uint8_t checksum = 0U;
+    for (size_t i = 0; i < 8U + sn_length; ++i) checksum ^= response[i];
+    response[8U + sn_length] = checksum;
+    response[9U + sn_length] = 0xAA;
+    notify_connection(connection, response, 10U + sn_length);
+    return true;
+}
+
 static void consume_rx_bytes(phone_connection_t *connection, size_t count)
 {
     if (count >= connection->rx_length) {
@@ -484,6 +515,10 @@ static void process_complete_app_frame(phone_connection_t *connection,
     tmy06_state_t previous;
     tmy06_state_t snapshot;
     bool accepted;
+
+    if (process_identity_frame(connection, frame, length)) {
+        return;
+    }
 
     if (tesla_link_handle_ble_frame(connection->handle, frame, length)) {
         return;
