@@ -20,6 +20,7 @@
 #include "nvs.h"
 #include "sdkconfig.h"
 #include "wifi_provisioning.h"
+#include "remote_frame.h"
 
 #define TAG "FRIDGE-MQTT"
 #define MQTT_SN_NAMESPACE "mqtt_cfg"
@@ -73,6 +74,11 @@ static char g_topic_cmd[MQTT_TOPIC_CAPACITY];
 static char g_topic_online[MQTT_TOPIC_CAPACITY];
 static char g_topic_state[MQTT_TOPIC_CAPACITY];
 static char g_topic_viewer[MQTT_TOPIC_CAPACITY];
+static char g_topic_event[MQTT_TOPIC_CAPACITY];
+static SemaphoreHandle_t g_remote_lock;
+static char g_remote_session[65];
+static char g_recent_requests[16][129];
+static size_t g_recent_request_index;
 static const ble_sim_profile_info_t *g_profile_info;
 static char g_rx_buffer[MQTT_COMMAND_MAX_LENGTH + 1U];
 static size_t g_rx_expected;
@@ -161,7 +167,8 @@ static bool make_topics(void)
     return snprintf(g_topic_cmd, sizeof(g_topic_cmd), "fridge/%s/cmd", g_sn) > 0 &&
            snprintf(g_topic_online, sizeof(g_topic_online), "fridge/%s/online", g_sn) > 0 &&
            snprintf(g_topic_state, sizeof(g_topic_state), "fridge/%s/state", g_sn) > 0 &&
-           snprintf(g_topic_viewer, sizeof(g_topic_viewer), "fridge/%s/viewer", g_sn) > 0;
+           snprintf(g_topic_viewer, sizeof(g_topic_viewer), "fridge/%s/viewer", g_sn) > 0 &&
+           snprintf(g_topic_event, sizeof(g_topic_event), "fridge/%s/event", g_sn) > 0;
 }
 
 static int mqtt_publish(const char *topic, const char *payload, int qos, int retain)
@@ -217,6 +224,7 @@ static void publish_state(void)
         return;
     }
     cJSON_AddBoolToObject(root, "powerOn", state.power == TMY06_POWER_ON);
+    cJSON_AddNumberToObject(root, "protocolFrames", 1);
     cJSON_AddStringToObject(root, "unit", unit_name(state.unit));
     cJSON_AddStringToObject(root, "mode", mode_name(state.mode));
     if (g_profile_info->has_child_lock) {
@@ -325,6 +333,72 @@ static bool utf8_is_valid(const uint8_t *data, size_t length)
     return true;
 }
 
+static void publish_remote_json(cJSON *root)
+{
+    char *json = cJSON_PrintUnformatted(root);
+    if (json != NULL) {
+        mqtt_publish(g_topic_event, json, 1, 0);
+        cJSON_free(json);
+    }
+    cJSON_Delete(root);
+}
+
+static void remote_frame_notification(const uint8_t *frame, size_t length)
+{
+    if (length == 0U || length > 160U || g_remote_lock == NULL) return;
+    char session[sizeof(g_remote_session)];
+    xSemaphoreTake(g_remote_lock, portMAX_DELAY);
+    strlcpy(session, g_remote_session, sizeof(session));
+    xSemaphoreGive(g_remote_lock);
+    if (session[0] == '\0') return;
+    char hex[321];
+    const char *digits = "0123456789abcdef";
+    for (size_t i = 0; i < length; ++i) {
+        hex[i * 2U] = digits[frame[i] >> 4];
+        hex[i * 2U + 1U] = digits[frame[i] & 15];
+    }
+    hex[length * 2U] = '\0';
+    cJSON *root = cJSON_CreateObject();
+    if (root == NULL) return;
+    cJSON_AddStringToObject(root, "type", "frame");
+    cJSON_AddStringToObject(root, "sessionId", session);
+    cJSON_AddStringToObject(root, "frame", hex);
+    publish_remote_json(root);
+}
+
+static void handle_remote_frame(cJSON *root)
+{
+    cJSON *session = cJSON_GetObjectItemCaseSensitive(root, "sessionId");
+    cJSON *request = cJSON_GetObjectItemCaseSensitive(root, "requestId");
+    if (!json_string_is_valid(session, 64U) || !json_string_is_valid(request, 128U)) return;
+    cJSON *params = required_params_object(root);
+    cJSON *hex = cJSON_GetObjectItemCaseSensitive(params, "frame");
+    uint8_t frame[160];
+    size_t length = cJSON_IsString(hex) ? remote_decode_frame(hex->valuestring, frame, sizeof(frame)) : 0U;
+    bool duplicate = false;
+    for (size_t i = 0; i < 16U; ++i) {
+        if (strcmp(g_recent_requests[i], request->valuestring) == 0) duplicate = true;
+    }
+    xSemaphoreTake(g_remote_lock, portMAX_DELAY);
+    strlcpy(g_remote_session, session->valuestring, sizeof(g_remote_session));
+    xSemaphoreGive(g_remote_lock);
+    bool accepted = duplicate || (length > 0U && app_remote_frame_supported(frame, length));
+    cJSON *reply = cJSON_CreateObject();
+    if (reply == NULL) return;
+    cJSON_AddStringToObject(reply, "type", "result");
+    cJSON_AddStringToObject(reply, "sessionId", session->valuestring);
+    cJSON_AddStringToObject(reply, "requestId", request->valuestring);
+    cJSON_AddBoolToObject(reply, "accepted", accepted);
+    if (!accepted) cJSON_AddStringToObject(reply, "error", "Unsupported or invalid remote command");
+    publish_remote_json(reply);
+    // Acceptance is distinct from operation success, reported by device frames.
+    // Publish acceptance before a network change can take MQTT offline.
+    if (accepted && !duplicate) {
+        strlcpy(g_recent_requests[g_recent_request_index++ % 16U], request->valuestring, 129U);
+        app_process_remote_frame(frame, length);
+    }
+}
+
 static void handle_command(char *json, size_t json_length)
 {
     if (!utf8_is_valid((const uint8_t *)json, json_length)) {
@@ -347,6 +421,11 @@ static void handle_command(char *json, size_t json_length)
     }
 
     const char *command = command_item->valuestring;
+    if (strcmp(command, "PROTOCOL_FRAME") == 0) {
+        handle_remote_frame(root);
+        cJSON_Delete(root);
+        return;
+    }
     tmy06_state_t state;
     if (!ble_tmy06_get_state(&state)) {
         ESP_LOGE(TAG, "Cannot read state for MQTT command %s", command);
@@ -723,6 +802,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
                                 : (size_t)event->data_len;
             g_rx_type = MQTT_RX_NONE;
             if (event->topic != NULL &&
+                !event->retain &&
                 event->topic_len == (int)strlen(g_topic_cmd) &&
                 memcmp(event->topic, g_topic_cmd,
                        (size_t)event->topic_len) == 0) {
@@ -761,6 +841,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
 
 esp_err_t mqtt_service_init(void)
 {
+    g_remote_lock = xSemaphoreCreateMutex();
+    if (g_remote_lock == NULL) return ESP_ERR_NO_MEM;
+    app_set_remote_notify_handler(remote_frame_notification);
     ble_sim_profile_t profile = ble_sim_get_active_profile();
     if (profile == BLE_SIM_PROFILE_LEGACY_Y06) {
         ESP_LOGI(TAG, "MQTT disabled for profile %s",

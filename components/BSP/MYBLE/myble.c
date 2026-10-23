@@ -52,6 +52,7 @@ static ble_sim_profile_t g_active_profile = BLE_SIM_PROFILE_LEGACY_Y06;
 static const ble_sim_profile_info_t *g_profile_info;
 static ble_ota_start_handler_t g_ota_start_handler;
 static ble_state_change_handler_t g_state_change_handler;
+static app_remote_notify_t g_remote_notify;
 static char g_device_name[32];
 static char g_mqtt_sn[65];
 /* AD type 0x16 contains its UUID first, in little-endian byte order. */
@@ -265,6 +266,10 @@ static void notify_connection(phone_connection_t *connection,
                                const uint8_t *frame,
                                size_t length)
 {
+    if (connection != NULL && connection->handle == APP_REMOTE_CONNECTION_HANDLE) {
+        if (g_remote_notify != NULL) g_remote_notify(frame, length);
+        return;
+    }
     if (connection == NULL || !connection->in_use || !connection->notify_enabled) {
         return;
     }
@@ -311,6 +316,10 @@ static void notify_wifi_provisioning(uint16_t connection_handle,
                                      const uint8_t *frame,
                                      size_t length)
 {
+    if (connection_handle == APP_REMOTE_CONNECTION_HANDLE) {
+        if (g_remote_notify != NULL) g_remote_notify(frame, length);
+        return;
+    }
     notify_connection(find_connection(connection_handle), frame, length);
 }
 
@@ -318,6 +327,10 @@ static void notify_tesla_link(uint16_t connection_handle,
                               const uint8_t *frame,
                               size_t length)
 {
+    if (connection_handle == APP_REMOTE_CONNECTION_HANDLE) {
+        if (g_remote_notify != NULL) g_remote_notify(frame, length);
+        return;
+    }
     notify_connection(find_connection(connection_handle), frame, length);
 }
 
@@ -363,6 +376,7 @@ static void notify_ambient_subscribers(const char *reason)
     size_t length = tmy06_protocol_build_ambient_status_frame(g_active_profile, &snapshot, frame, sizeof(frame));
     if (length == 0U) return;
     ESP_LOGI(TAG, "氛围灯状态上报：%s", reason);
+    if (g_remote_notify != NULL) g_remote_notify(frame, length);
     ESP_LOG_BUFFER_HEX_LEVEL(TAG, frame, length, ESP_LOG_INFO);
     for (size_t i = 0; i < MAX_PHONE_CONNECTIONS; ++i) notify_connection(&g_connections[i], frame, length);
 }
@@ -381,6 +395,7 @@ void ble_ota_report_status(tmy06_ota_status_t status, uint8_t information)
     }
 
     ESP_LOG_BUFFER_HEX_LEVEL(TAG, frame, length, ESP_LOG_INFO);
+    if (g_remote_notify != NULL) g_remote_notify(frame, length);
     for (size_t i = 0; i < MAX_PHONE_CONNECTIONS; ++i) {
         notify_connection(&g_connections[i], frame, length);
     }
@@ -576,6 +591,36 @@ static void process_complete_app_frame(phone_connection_t *connection,
     } else {
         notify_all_subscribers("收到App控制命令", true);
     }
+}
+
+void app_set_remote_notify_handler(app_remote_notify_t handler)
+{
+    g_remote_notify = handler;
+}
+
+bool app_remote_frame_supported(const uint8_t *frame, size_t length)
+{
+    if (g_profile_info == NULL || g_profile_info->is_legacy ||
+        length < 6U || length > RX_STREAM_CAPACITY ||
+        !tmy06_protocol_validate_frame(frame, length)) return false;
+    switch (frame[3]) {
+    case 0x07: case 0xA0: case 0xA2:
+    case 0xB0: case 0xB2: case 0xB4: case 0xB6:
+    case 0xC0: case 0xC2: case 0xC4:
+        break;
+    default:
+        return false;
+    }
+    return true;
+}
+
+bool app_process_remote_frame(const uint8_t *frame, size_t length)
+{
+    if (!app_remote_frame_supported(frame, length)) return false;
+    phone_connection_t remote = { .handle = APP_REMOTE_CONNECTION_HANDLE,
+                                  .in_use = true, .notify_enabled = true };
+    process_complete_app_frame(&remote, frame, length);
+    return true;
 }
 
 static void parse_rx_stream(phone_connection_t *connection)

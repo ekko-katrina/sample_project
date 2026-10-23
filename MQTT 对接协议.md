@@ -42,7 +42,7 @@ SN 必须满足：
 
 ## Topic
 
-ESP32 只使用以下四个 Topic：
+ESP32 使用以下 Topic：
 
 | ESP32 动作 | Topic | QoS | Retain | 用途 |
 | --- | --- | ---: | ---: | --- |
@@ -50,6 +50,7 @@ ESP32 只使用以下四个 Topic：
 | 订阅 | `fridge/{sn}/viewer` | 1 | 是 | 接收浏览器在线状态 |
 | 发布 | `fridge/{sn}/online` | 1 | 是 | 发布 ESP32 在线状态 |
 | 发布 | `fridge/{sn}/state` | 1 | 是 | 发布完整设备状态 |
+| 发布 | `fridge/{sn}/event` | 1 | 否 | App 扩展命令受理结果、状态和过程事件 |
 
 示例 SN `TMY06-TEST-001`：
 

@@ -39,4 +39,11 @@ void ble_tmy06_set_state_change_handler(ble_state_change_handler_t handler);
 void ble_phone_advertising_pause(void);
 void ble_phone_advertising_resume(void);
 
+/* Transport-neutral frame entry. This virtual handle never opens a BLE link. */
+#define APP_REMOTE_CONNECTION_HANDLE 0xFFFEU
+typedef void (*app_remote_notify_t)(const uint8_t *frame, size_t length);
+void app_set_remote_notify_handler(app_remote_notify_t handler);
+bool app_process_remote_frame(const uint8_t *frame, size_t length);
+bool app_remote_frame_supported(const uint8_t *frame, size_t length);
+
 #endif

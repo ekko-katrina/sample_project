@@ -1,4 +1,5 @@
 #include "wifi_provisioning.h"
+#include "myble.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -934,6 +935,9 @@ static void wifi_ble_connect_worker(void *argument)
 {
     (void)argument;
     wifi_ble_connect_request_t request = g_ble_connect_request;
+    if (request.connection_handle == APP_REMOTE_CONNECTION_HANDLE) {
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
     g_ble_connect_request.stage = WIFI_STAGE_ASSOCIATING;
     wifi_ble_send_configure_event(request.connection_handle,
                                   request.request_id,
@@ -1401,6 +1405,9 @@ bool wifi_provisioning_handle_ble_frame(uint16_t connection_handle,
         wifi_ble_send_clear_result(connection_handle, request_id,
                                    WIFI_RESULT_SUCCESS, WIFI_ERROR_NONE);
         if ((payload[2] & 0x01U) != 0U) {
+            if (connection_handle == APP_REMOTE_CONNECTION_HANDLE) {
+                vTaskDelay(pdMS_TO_TICKS(500));
+            }
             esp_wifi_disconnect();
         }
     } else {
