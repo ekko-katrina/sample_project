@@ -41,6 +41,14 @@ void ble_phone_advertising_resume(void);
 
 /* Transport-neutral frame entry. This virtual handle never opens a BLE link. */
 #define APP_REMOTE_CONNECTION_HANDLE 0xFFFEU
+static inline const char *app_control_transport(uint16_t handle)
+{
+    return handle == APP_REMOTE_CONNECTION_HANDLE ? "MQTT" : "BLE";
+}
+static inline const char *app_control_log_tag(uint16_t handle)
+{
+    return handle == APP_REMOTE_CONNECTION_HANDLE ? "FRIDGE-MQTT" : "FRIDGE-BLE";
+}
 typedef void (*app_remote_notify_t)(const uint8_t *frame, size_t length);
 void app_set_remote_notify_handler(app_remote_notify_t handler);
 bool app_process_remote_frame(const uint8_t *frame, size_t length);

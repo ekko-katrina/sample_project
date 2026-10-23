@@ -179,10 +179,10 @@ static const char *mode_text(tmy06_mode_t mode)
     }
 }
 
-static void log_state_summary(const tmy06_state_t *state)
+static void log_state_summary(const char *tag, const tmy06_state_t *state)
 {
     if (g_profile_info->has_voltage) {
-        ESP_LOGI(TAG,
+        ESP_LOGI(tag,
                  "当前状态：%s，%s，%s，目标温度=%d，实际温度=%d，电压=%u.%02uV，故障=%s(%u)",
                  state->power == TMY06_POWER_ON ? "开机" : "关机",
                  state->unit == TMY06_UNIT_FAHRENHEIT ? "华氏度" : "摄氏度",
@@ -192,7 +192,7 @@ static void log_state_summary(const tmy06_state_t *state)
                  state->actual_voltage_centi_volts % 100U,
                  fault_text(state->fault_code), state->fault_code);
     } else {
-        ESP_LOGI(TAG,
+        ESP_LOGI(tag,
                  "当前状态：%s，%s，%s，童锁%s，目标温度=%d，实际温度=%d，故障=%s(%u)",
                  state->power == TMY06_POWER_ON ? "开机" : "关机",
                  state->unit == TMY06_UNIT_FAHRENHEIT ? "华氏度" : "摄氏度",
@@ -203,47 +203,47 @@ static void log_state_summary(const tmy06_state_t *state)
     }
 }
 
-static void log_app_command(tmy06_command_t command, const tmy06_state_t *state)
+static void log_app_command(const char *tag, tmy06_command_t command, const tmy06_state_t *state)
 {
     switch (command) {
     case TMY06_COMMAND_GET_STATE:
-        ESP_LOGI(TAG, "收到App命令：获取冰箱全状态");
+        ESP_LOGI(tag, "收到App命令：获取冰箱全状态");
         break;
     case TMY06_COMMAND_SET_POWER:
-        ESP_LOGI(TAG,
+        ESP_LOGI(tag,
                  "收到App命令：%s",
                  state->power == TMY06_POWER_ON ? "开机" : "关机");
         break;
     case TMY06_COMMAND_SET_MODE:
-        ESP_LOGI(TAG,
+        ESP_LOGI(tag,
                  "收到App命令：切换为%s模式",
                  mode_text(state->mode));
         break;
     case TMY06_COMMAND_SET_UNIT:
-        ESP_LOGI(TAG,
+        ESP_LOGI(tag,
                  "收到App命令：温度单位改为%s",
                  state->unit == TMY06_UNIT_FAHRENHEIT ? "华氏度" : "摄氏度");
         break;
     case TMY06_COMMAND_SET_TARGET_TEMPERATURE:
-        ESP_LOGI(TAG, "收到App命令：目标温度改为%d", state->target_temperature);
+        ESP_LOGI(tag, "收到App命令：目标温度改为%d", state->target_temperature);
         break;
     case TMY06_COMMAND_SET_CHILD_LOCK:
-        ESP_LOGI(TAG,
+        ESP_LOGI(tag,
                  "收到App命令：童锁%s",
                  state->child_lock == TMY06_CHILD_LOCK_ON ? "上锁" : "解锁");
         break;
     case TMY06_COMMAND_SET_AMBIENT_LIGHT:
-        ESP_LOGI(TAG, "氛围灯已保存：灯效=%s，制冷=#%02X%02X%02X，制热=#%02X%02X%02X",
+        ESP_LOGI(tag, "氛围灯已保存：灯效=%s，制冷=#%02X%02X%02X，制热=#%02X%02X%02X",
                  state->ambient.disabled ? "关闭" : (state->ambient.effect ? "呼吸" : "常亮"),
                  state->ambient.colors[0][0], state->ambient.colors[0][1], state->ambient.colors[0][2],
                  state->ambient.colors[1][0], state->ambient.colors[1][1], state->ambient.colors[1][2]);
         break;
     default:
-        ESP_LOGI(TAG, "收到App命令：0x%02X", (unsigned int)command);
+        ESP_LOGI(tag, "收到App命令：0x%02X", (unsigned int)command);
         break;
     }
 
-    log_state_summary(state);
+    log_state_summary(tag, state);
 }
 
 static int append_status_to_mbuf(struct os_mbuf *om)
@@ -273,6 +273,8 @@ static void notify_connection(phone_connection_t *connection,
     if (connection == NULL || !connection->in_use || !connection->notify_enabled) {
         return;
     }
+    ESP_LOGD(TAG, "[transport=BLE] TX cmd=0x%02X length=%u conn=%u",
+             length > 3U ? frame[3] : 0U, (unsigned int)length, connection->handle);
     if (g_notify_mutex != NULL &&
         xSemaphoreTake(g_notify_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
         ESP_LOGW(TAG, "Notify queue busy: conn=%u", connection->handle);
@@ -358,7 +360,7 @@ static void notify_all_subscribers(const char *reason, bool proactive)
     }
 
     ESP_LOGI(TAG,
-             "时间=%lld ms，ESP32%s全状态：原因=%s，Notify订阅数=%u",
+             "[transport=BLE] 时间=%lld ms，ESP32%s全状态：原因=%s，Notify订阅数=%u",
              (long long)esp_log_timestamp(),
              proactive ? "主动上报" : "响应查询上报",
              reason != NULL ? reason : "未指定",
@@ -375,9 +377,9 @@ static void notify_ambient_subscribers(const char *reason)
     tmy06_state_t snapshot = get_state_snapshot();
     size_t length = tmy06_protocol_build_ambient_status_frame(g_active_profile, &snapshot, frame, sizeof(frame));
     if (length == 0U) return;
-    ESP_LOGI(TAG, "氛围灯状态上报：%s", reason);
+    ESP_LOGI("FRIDGE-APP", "[scope=shared] 氛围灯状态上报：%s", reason);
     if (g_remote_notify != NULL) g_remote_notify(frame, length);
-    ESP_LOG_BUFFER_HEX_LEVEL(TAG, frame, length, ESP_LOG_INFO);
+    ESP_LOG_BUFFER_HEX_LEVEL("FRIDGE-APP", frame, length, ESP_LOG_DEBUG);
     for (size_t i = 0; i < MAX_PHONE_CONNECTIONS; ++i) notify_connection(&g_connections[i], frame, length);
 }
 
@@ -389,12 +391,13 @@ void ble_ota_report_status(tmy06_ota_status_t status, uint8_t information)
                                                           frame,
                                                           sizeof(frame));
     if (length == 0U) {
-        ESP_LOGE(TAG, "Invalid OTA status: status=%u information=%u",
+        ESP_LOGE("FRIDGE-APP", "Invalid OTA status: status=%u information=%u",
                  (unsigned int)status, information);
         return;
     }
 
-    ESP_LOG_BUFFER_HEX_LEVEL(TAG, frame, length, ESP_LOG_INFO);
+    ESP_LOGI("FRIDGE-APP", "[scope=shared] OTA status=%u information=%u", (unsigned int)status, information);
+    ESP_LOG_BUFFER_HEX_LEVEL("FRIDGE-APP", frame, length, ESP_LOG_DEBUG);
     if (g_remote_notify != NULL) g_remote_notify(frame, length);
     for (size_t i = 0; i < MAX_PHONE_CONNECTIONS; ++i) {
         notify_connection(&g_connections[i], frame, length);
@@ -468,7 +471,7 @@ static void get_firmware_version(uint8_t *major,
         return;
     }
 
-    ESP_LOGW(TAG, "无法解析应用版本 '%s'，使用 Kconfig 版本", app_desc->version);
+    ESP_LOGW("FRIDGE-APP", "无法解析应用版本 '%s'，使用 Kconfig 版本", app_desc->version);
     *major = CONFIG_TMY06_FW_VERSION_MAJOR;
     *minor = CONFIG_TMY06_FW_VERSION_MINOR;
     *patch = CONFIG_TMY06_FW_VERSION_PATCH;
@@ -478,6 +481,7 @@ static bool process_ota_frame(phone_connection_t *connection,
                               const uint8_t *frame,
                               size_t length)
 {
+    const char *tag = app_control_log_tag(connection->handle);
     if (g_profile_info->is_legacy) {
         return false;
     }
@@ -501,16 +505,16 @@ static bool process_ota_frame(phone_connection_t *connection,
             patch,
             response,
             sizeof(response));
-        ESP_LOGI(TAG, "收到App命令：查询固件版本 %u.%u.%u",
+        ESP_LOGI(tag, "收到App命令：查询固件版本 %u.%u.%u",
                  major, minor, patch);
         notify_connection(connection, response, response_length);
         return true;
     }
 
-    ESP_LOGI(TAG, "收到App命令：开始 OTA，目标 %u/%u.%u.%u",
+    ESP_LOGI(tag, "收到App命令：开始 OTA，目标 %u/%u.%u.%u",
              request.model_id, request.major, request.minor, request.patch);
     if (request.model_id != g_profile_info->model_id) {
-        ESP_LOGE(TAG, "OTA 目标型号与当前设备不一致");
+        ESP_LOGE(tag, "OTA 目标型号与当前设备不一致");
         ble_ota_report_status(TMY06_OTA_STATUS_ERROR,
                               TMY06_OTA_ERROR_VERSION);
         return true;
@@ -526,6 +530,9 @@ static void process_complete_app_frame(phone_connection_t *connection,
                                        const uint8_t *frame,
                                        size_t length)
 {
+    const char *tag = app_control_log_tag(connection->handle);
+    ESP_LOGI(tag, "[transport=%s] RX cmd=0x%02X length=%u",
+             app_control_transport(connection->handle), frame[3], (unsigned int)length);
     tmy06_command_t command;
     tmy06_state_t previous;
     tmy06_state_t snapshot;
@@ -560,7 +567,7 @@ static void process_complete_app_frame(phone_connection_t *connection,
         memcmp(&previous.ambient, &snapshot.ambient, sizeof(snapshot.ambient)) != 0) {
         esp_err_t err = ambient_light_save(&snapshot.ambient);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "氛围灯保存失败：%s", esp_err_to_name(err));
+            ESP_LOGE(tag, "氛围灯保存失败：%s", esp_err_to_name(err));
             notify_ambient_subscribers("氛围灯保存失败，回传原设置");
             return;
         }
@@ -575,15 +582,15 @@ static void process_complete_app_frame(phone_connection_t *connection,
     portEXIT_CRITICAL(&g_state_lock);
 
     if (!accepted) {
-        ESP_LOGW(TAG, "当前档位不支持该命令，或命令参数无效");
+        ESP_LOGW(tag, "当前档位不支持该命令，或命令参数无效");
         return;
     }
 
     if (command != TMY06_COMMAND_SET_AMBIENT_LIGHT) report_state_change(&previous, &snapshot);
 
     bool ambient_query = command == TMY06_COMMAND_SET_AMBIENT_LIGHT && frame[4] == TMY06_AMBIENT_QUERY_OPERATION;
-    if (ambient_query) ESP_LOGI(TAG, "收到App命令：仅查询灯光状态");
-    else log_app_command(command, &snapshot);
+    if (ambient_query) ESP_LOGI(tag, "收到App命令：仅查询灯光状态");
+    else log_app_command(tag, command, &snapshot);
     if (command == TMY06_COMMAND_GET_STATE) {
         notify_all_subscribers("App获取全状态命令", false);
     } else if (command == TMY06_COMMAND_SET_AMBIENT_LIGHT) {

@@ -347,7 +347,8 @@ static void wifi_ble_notify(uint16_t connection_handle,
     }
     notification.frame_length = frame_length;
     if (xQueueSend(g_ble_notify_queue, &notification, 0U) != pdTRUE) {
-        ESP_LOGW(TAG, "BLE notify queue full: command=0x%02X", command);
+        ESP_LOGW(TAG, "[transport=%s] Report queue full: command=0x%02X",
+                 app_control_transport(connection_handle), command);
     }
 }
 

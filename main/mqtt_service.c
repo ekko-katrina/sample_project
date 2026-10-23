@@ -333,14 +333,16 @@ static bool utf8_is_valid(const uint8_t *data, size_t length)
     return true;
 }
 
-static void publish_remote_json(cJSON *root)
+static int publish_remote_json(cJSON *root)
 {
+    int message_id = -1;
     char *json = cJSON_PrintUnformatted(root);
     if (json != NULL) {
-        mqtt_publish(g_topic_event, json, 1, 0);
+        message_id = mqtt_publish(g_topic_event, json, 1, 0);
         cJSON_free(json);
     }
     cJSON_Delete(root);
+    return message_id;
 }
 
 static void remote_frame_notification(const uint8_t *frame, size_t length)
@@ -363,7 +365,14 @@ static void remote_frame_notification(const uint8_t *frame, size_t length)
     cJSON_AddStringToObject(root, "type", "frame");
     cJSON_AddStringToObject(root, "sessionId", session);
     cJSON_AddStringToObject(root, "frame", hex);
-    publish_remote_json(root);
+    int message_id = publish_remote_json(root);
+    if (message_id >= 0) {
+        ESP_LOGI(TAG, "[transport=MQTT] TX cmd=0x%02X length=%u messageId=%d",
+                 frame[3], (unsigned int)length, message_id);
+    } else {
+        ESP_LOGW(TAG, "[transport=MQTT] TX failed cmd=0x%02X length=%u",
+                 frame[3], (unsigned int)length);
+    }
 }
 
 static void handle_remote_frame(cJSON *root)
@@ -383,6 +392,8 @@ static void handle_remote_frame(cJSON *root)
     strlcpy(g_remote_session, session->valuestring, sizeof(g_remote_session));
     xSemaphoreGive(g_remote_lock);
     bool accepted = duplicate || (length > 0U && app_remote_frame_supported(frame, length));
+    ESP_LOGI(TAG, "[transport=MQTT] request=%s accepted=%s duplicate=%s",
+             request->valuestring, accepted ? "true" : "false", duplicate ? "true" : "false");
     cJSON *reply = cJSON_CreateObject();
     if (reply == NULL) return;
     cJSON_AddStringToObject(reply, "type", "result");
@@ -426,6 +437,7 @@ static void handle_command(char *json, size_t json_length)
         cJSON_Delete(root);
         return;
     }
+    ESP_LOGI(TAG, "[transport=MQTT] RX cmd=%s", command);
     tmy06_state_t state;
     if (!ble_tmy06_get_state(&state)) {
         ESP_LOGE(TAG, "Cannot read state for MQTT command %s", command);

@@ -37,3 +37,12 @@ accepted 表示完整帧已交付业务入口，不代表业务成功；实际�
 OTA 仍由设备自行下载、验证和重启；A3 经 MQTT 上报。App 等待 MQTT 恢复，通过 A0/A1 验证实际版本，不连接手机 BLE。
 
 不记录 Wi-Fi 密码，不保留配置命令和事件。Broker 沿用当前开发配置；生产 TLS、身份认证与 Topic ACL 沿用主 MQTT 协议文档要求，本改动不新增账户授权体系。
+
+## 控制台日志
+
+- `FRIDGE-BLE`：手机 BLE 连接事件、BLE 收到的指令和实际 BLE Notify 分发。
+- `FRIDGE-MQTT`：MQTT 收到的指令及扩展回包，RX/TX 日志包含 `transport=MQTT`、命令码和长度；受理日志包含 requestId 及重复标记，不输出完整凭据帧。
+- `FRIDGE-APP`：与通道无关的共用状态日志，例如氛围灯状态更新、OTA 阶段，使用 `scope=shared` 标识，不代表手机通过 BLE 连接。
+
+版本查询通过 MQTT 到达时，输出 `FRIDGE-MQTT: 收到App命令：查询固件版本 ...`；通过 BLE 到达时输出对应 `FRIDGE-BLE` 标签。
+MQTT TX 的 messageId 表示已交给 MQTT 客户端，不代表 App 已收到；失败单独输出 TX failed。
