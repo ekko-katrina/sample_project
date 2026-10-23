@@ -170,6 +170,8 @@ TESLA_EVENT 的 data 与 TESLA_STATUS 相同，全部字段必填：configured�
 
 connectionState：0 断开、1 扫描、2 连接中、3 已连接、4 服务已发现、5 已认证。
 
+车机状态在活动阶段每 5 秒主动上报一次，BLE 和 MQTT 规则一致。停止时立即上报 STOPPING，完成后上报 STOPPED；STOPPED 状态不再周期上报。GET_TESLA_STATUS 仍立即独立回复当前状态，再次发起连接后恢复周期上报。App 对已确认的 STOPPED/断开状态不做心跳超时判断；手机控制通道重连后仍需重新查询。
+
 stage：0 IDLE、1 SAVED、2 SCANNING、3 CONNECTING、4 WAITING_APPROVAL、5 PAIRED、6 AUTHENTICATED、7 FAILED、8 STOPPED、9 STOPPING。
 
 errorCode：0 无错误、1 忙、2 VIN 无效、3 保存失败、4 扫描超时、5 连接失败、6 配对失败、7 认证失败、8 内部错误、9 密钥未授权、10 数据不可用、255 未知。

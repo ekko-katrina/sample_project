@@ -304,11 +304,14 @@ static void drive_log_task(void *argument)
             tesla_ble_cancel_operations();
         }
         uint16_t phone = g_request_connection;
+        // STOPPED is reported by the worker and on explicit queries. It does
+        // not need periodic notifications on either phone BLE or MQTT.
+        bool status_heartbeat = heartbeat && g_stage != TESLA_STAGE_STOPPED;
         bool valid = g_drive_log_valid;
         tesla_drive_state_t drive = g_drive_log_state;
         TickType_t updated = g_drive_log_updated;
         xSemaphoreGive(g_lock);
-        if ((heartbeat || report_expired) && phone != UINT16_MAX) notify_status(TESLA_COMMAND_EVENT, phone);
+        if ((status_heartbeat || report_expired) && phone != UINT16_MAX) notify_status(TESLA_COMMAND_EVENT, phone);
         if (!connected || !heartbeat) continue;
         if (valid) {
             uint32_t age_sec = (uint32_t)((xTaskGetTickCount() - updated) / pdMS_TO_TICKS(1000));
