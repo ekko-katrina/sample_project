@@ -53,10 +53,10 @@ static void ambient_light_task(void *arg)
         tmy06_state_t state;
         if (ble_tmy06_get_state(&state)) {
             const uint8_t *rgb = tmy06_protocol_active_ambient_color(&state);
-            // One breathing cycle is 3 seconds; steady output ignores the phase.
-            unsigned int ramp = phase < 50U ? phase : 100U - phase;
+            // 200 steps at 30 ms: 3 seconds brighter, 3 seconds dimmer.
+            unsigned int ramp = phase < 100U ? phase : 200U - phase;
             unsigned int scale = state.ambient.effect == 0U ? AMBIENT_MAX_SCALE
-                : AMBIENT_MIN_SCALE + ramp * (AMBIENT_MAX_SCALE - AMBIENT_MIN_SCALE) / 50U;
+                : AMBIENT_MIN_SCALE + ramp * (AMBIENT_MAX_SCALE - AMBIENT_MIN_SCALE) / 100U;
             if (state.power == TMY06_POWER_OFF || state.ambient.disabled) scale = 0;
             uint8_t output[3];
             bool changed = false;
@@ -74,7 +74,7 @@ static void ambient_light_task(void *arg)
                 }
             }
         }
-        phase = (phase + 1U) % 100U;
+        phase = (phase + 1U) % 200U;
         vTaskDelay(pdMS_TO_TICKS(30));
     }
 }
