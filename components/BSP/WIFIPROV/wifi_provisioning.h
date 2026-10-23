@@ -27,6 +27,16 @@ bool wifi_provisioning_handle_ble_frame(uint16_t connection_handle,
                                         size_t length);
 void wifi_provisioning_handle_ble_disconnect(uint16_t connection_handle);
 
+typedef enum { WIFI_CONTROL_STATUS, WIFI_CONTROL_SCAN, WIFI_CONTROL_CONFIGURE, WIFI_CONTROL_CLEAR } wifi_control_operation_t;
+typedef struct {
+    wifi_control_operation_t operation;
+    uint16_t operation_id;
+    bool include_hidden, hidden, lock_bssid, disconnect;
+    char ssid[33], password[65];
+    uint8_t bssid[6];
+} wifi_control_request_t;
+bool wifi_provisioning_execute(uint16_t client, const wifi_control_request_t *request);
+
 #ifdef __cplusplus
 }
 #endif

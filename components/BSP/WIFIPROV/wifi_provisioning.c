@@ -406,6 +406,14 @@ static void wifi_ble_send_status(uint16_t connection_handle,
     payload[5] = (uint8_t)ssid_length;
     memcpy(payload + 6U, ssid, ssid_length);
     wifi_ble_get_ip(payload + 6U + ssid_length);
+    if (connection_handle == APP_REMOTE_CONNECTION_HANDLE) {
+        app_control_event_t event = { .kind = APP_EVENT_WIFI_STATUS, .operation_id = request_id,
+            .data.wifi = { .state = wifi_ble_state(), .error = g_last_wifi_error, .rssi = (int8_t)payload[4] } };
+        memcpy(event.data.wifi.ssid, ssid, ssid_length);
+        wifi_ble_get_ip(event.data.wifi.ip);
+        app_report_remote_event(&event);
+        return;
+    }
     wifi_ble_notify(connection_handle, WIFI_COMMAND_STATUS,
                     payload, 10U + ssid_length);
 }
@@ -440,6 +448,18 @@ static void wifi_ble_send_scan_event(uint16_t connection_handle,
         memcpy(payload + 12U, record->ssid, ssid_length);
         payload_length = 12U + ssid_length;
     }
+    if (connection_handle == APP_REMOTE_CONNECTION_HANDLE) {
+        app_control_event_t update = { .kind = APP_EVENT_WIFI_SCAN, .operation_id = request_id,
+            .data.wifi = { .event = event, .rssi = -128 } };
+        if (event == WIFI_SCAN_AP_ITEM && record != NULL) {
+            update.data.wifi.rssi = record->rssi;
+            update.data.wifi.auth_mode = payload[4];
+            memcpy(update.data.wifi.bssid, record->bssid, 6U);
+            memcpy(update.data.wifi.ssid, record->ssid, wifi_bounded_ssid_length(record->ssid));
+        }
+        app_report_remote_event(&update);
+        return;
+    }
     wifi_ble_notify(connection_handle, WIFI_COMMAND_SCAN_EVENT,
                     payload, payload_length);
 }
@@ -470,6 +490,14 @@ static void wifi_ble_send_configure_event(uint16_t connection_handle,
     if (stage == WIFI_STAGE_SUCCESS && result == WIFI_RESULT_SUCCESS) {
         wifi_ble_get_ip(payload + 7U + ssid_length);
     }
+    if (connection_handle == APP_REMOTE_CONNECTION_HANDLE) {
+        app_control_event_t event = { .kind = APP_EVENT_WIFI_CONFIGURE, .operation_id = request_id,
+            .data.wifi = { .stage = stage, .result = result, .error = error_code, .rssi = (int8_t)payload[5] } };
+        memcpy(event.data.wifi.ssid, safe_ssid, ssid_length);
+        if (stage == WIFI_STAGE_SUCCESS && result == WIFI_RESULT_SUCCESS) wifi_ble_get_ip(event.data.wifi.ip);
+        app_report_remote_event(&event);
+        return;
+    }
     wifi_ble_notify(connection_handle, WIFI_COMMAND_CONFIGURE_EVENT,
                     payload, 11U + ssid_length);
 }
@@ -479,6 +507,12 @@ static void wifi_ble_send_clear_result(uint16_t connection_handle,
                                        uint8_t result,
                                        uint8_t error_code)
 {
+    if (connection_handle == APP_REMOTE_CONNECTION_HANDLE) {
+        app_control_event_t event = { .kind = APP_EVENT_WIFI_CLEAR, .operation_id = request_id,
+            .data.wifi = { .result = result, .error = error_code, .state = wifi_ble_state() } };
+        app_report_remote_event(&event);
+        return;
+    }
     const uint8_t payload[] = {
         (uint8_t)(request_id >> 8U), (uint8_t)request_id,
         result, error_code, wifi_ble_state(),
@@ -1254,20 +1288,46 @@ bool wifi_provisioning_handle_ble_frame(uint16_t connection_handle,
                               ? wifi_ble_read_u16(payload)
                               : 0U;
 
-    if (command == WIFI_COMMAND_QUERY_STATUS) {
-        if (payload_length == 2U && request_id != 0U) {
-            wifi_ble_send_status(connection_handle, request_id);
-        }
+    wifi_control_request_t request = { .operation_id = request_id };
+    if (command == WIFI_COMMAND_QUERY_STATUS && payload_length == 2U) request.operation = WIFI_CONTROL_STATUS;
+    else if (command == WIFI_COMMAND_SCAN && payload_length == 3U && (payload[2] & 0xFEU) == 0U) {
+        request.operation = WIFI_CONTROL_SCAN;
+        request.include_hidden = (payload[2] & 1U) != 0U;
+    } else if (command == WIFI_COMMAND_CLEAR && payload_length == 3U && (payload[2] & 0xFEU) == 0U) {
+        request.operation = WIFI_CONTROL_CLEAR;
+        request.disconnect = (payload[2] & 1U) != 0U;
+    } else if (command == WIFI_COMMAND_CONFIGURE && payload_length >= 11U && (payload[2] & 0xFCU) == 0U &&
+               payload[3] <= 32U && payload[4] <= 64U && payload_length == 11U + payload[3] + payload[4] &&
+               !contains_zero_byte(payload + 11U, payload[3] + payload[4])) {
+        request.operation = WIFI_CONTROL_CONFIGURE;
+        request.hidden = (payload[2] & 1U) != 0U;
+        request.lock_bssid = (payload[2] & 2U) != 0U;
+        memcpy(request.bssid, payload + 5U, 6U);
+        memcpy(request.ssid, payload + 11U, payload[3]);
+        memcpy(request.password, payload + 11U + payload[3], payload[4]);
+    } else {
+        if (command == WIFI_COMMAND_SCAN) wifi_ble_send_scan_event(connection_handle, request_id, WIFI_SCAN_FAILED, NULL);
+        else if (command == WIFI_COMMAND_CONFIGURE) wifi_ble_send_configure_event(connection_handle, request_id, WIFI_STAGE_FAILED, WIFI_RESULT_FAILED, WIFI_ERROR_INVALID_PARAM, "");
+        else if (command == WIFI_COMMAND_CLEAR) wifi_ble_send_clear_result(connection_handle, request_id, WIFI_RESULT_FAILED, WIFI_ERROR_INVALID_PARAM);
+        return true;
+    }
+    if (request_id != 0U) wifi_provisioning_execute(connection_handle, &request);
+    else if (command == WIFI_COMMAND_SCAN) wifi_ble_send_scan_event(connection_handle, request_id, WIFI_SCAN_FAILED, NULL);
+    else if (command == WIFI_COMMAND_CONFIGURE) wifi_ble_send_configure_event(connection_handle, request_id, WIFI_STAGE_FAILED, WIFI_RESULT_FAILED, WIFI_ERROR_INVALID_PARAM, "");
+    else if (command == WIFI_COMMAND_CLEAR) wifi_ble_send_clear_result(connection_handle, request_id, WIFI_RESULT_FAILED, WIFI_ERROR_INVALID_PARAM);
+    return true;
+}
+
+bool wifi_provisioning_execute(uint16_t connection_handle, const wifi_control_request_t *request)
+{
+    if (request == NULL || request->operation_id == 0U) return false;
+    uint16_t request_id = request->operation_id;
+    if (request->operation == WIFI_CONTROL_STATUS) {
+        wifi_ble_send_status(connection_handle, request_id);
         return true;
     }
 
-    if (command == WIFI_COMMAND_SCAN) {
-        if (payload_length != 3U || request_id == 0U ||
-            (payload[2] & 0xFEU) != 0U) {
-            wifi_ble_send_scan_event(connection_handle, request_id,
-                                     WIFI_SCAN_FAILED, NULL);
-            return true;
-        }
+    if (request->operation == WIFI_CONTROL_SCAN) {
         if (g_ble_connect_request.active) {
             wifi_ble_send_scan_event(connection_handle, request_id,
                                      WIFI_SCAN_FAILED, NULL);
@@ -1283,7 +1343,7 @@ bool wifi_provisioning_handle_ble_frame(uint16_t connection_handle,
         }
         g_ble_scan_connection = connection_handle;
         g_ble_scan_request_id = request_id;
-        g_ble_scan_show_hidden = (payload[2] & 0x01U) != 0U;
+        g_ble_scan_show_hidden = request->include_hidden;
         wifi_ble_send_scan_event(connection_handle, request_id,
                                  WIFI_SCAN_STARTED, NULL);
         if (xTaskCreate(wifi_ble_scan_worker, "ble_wifi_scan", 4096,
@@ -1295,28 +1355,17 @@ bool wifi_provisioning_handle_ble_frame(uint16_t connection_handle,
         return true;
     }
 
-    if (command == WIFI_COMMAND_CONFIGURE) {
-        if (payload_length < 11U || request_id == 0U) {
-            wifi_ble_send_configure_event(connection_handle, request_id,
-                                          WIFI_STAGE_FAILED,
-                                          WIFI_RESULT_FAILED,
-                                          WIFI_ERROR_INVALID_PARAM, "");
-            return true;
-        }
-        uint8_t flags = payload[2];
-        uint8_t ssid_length = payload[3];
-        uint8_t password_length = payload[4];
-        bool hidden = (flags & 0x01U) != 0U;
-        bool use_bssid = (flags & 0x02U) != 0U;
-        bool lengths_valid = (flags & 0xFCU) == 0U &&
-                             ssid_length <= 32U &&
+    if (request->operation == WIFI_CONTROL_CONFIGURE) {
+        size_t ssid_length = strnlen(request->ssid, sizeof(request->ssid));
+        size_t password_length = strnlen(request->password, sizeof(request->password));
+        bool hidden = request->hidden;
+        bool use_bssid = request->lock_bssid;
+        bool lengths_valid = ssid_length <= 32U &&
                              password_length <= 64U &&
-                             payload_length ==
-                                 11U + ssid_length + password_length &&
                              (hidden || ssid_length > 0U);
         bool bssid_valid = !use_bssid;
         for (size_t i = 0U; use_bssid && i < 6U; ++i) {
-            bssid_valid = bssid_valid || payload[5U + i] != 0U;
+            bssid_valid = bssid_valid || request->bssid[i] != 0U;
         }
         if (!lengths_valid || !bssid_valid) {
             wifi_ble_send_configure_event(connection_handle, request_id,
@@ -1325,8 +1374,8 @@ bool wifi_provisioning_handle_ble_frame(uint16_t connection_handle,
                                           WIFI_ERROR_INVALID_PARAM, "");
             return true;
         }
-        const uint8_t *ssid = payload + 11U;
-        const uint8_t *password = ssid + ssid_length;
+        const uint8_t *ssid = (const uint8_t *)request->ssid;
+        const uint8_t *password = (const uint8_t *)request->password;
         bool password_valid = password_length == 0U ||
                               (password_length >= 8U &&
                                password_length <= 63U) ||
@@ -1369,7 +1418,7 @@ bool wifi_provisioning_handle_ble_frame(uint16_t connection_handle,
                password, password_length);
         g_ble_connect_request.credentials.use_bssid = use_bssid;
         if (use_bssid) {
-            memcpy(g_ble_connect_request.credentials.bssid, payload + 5U, 6U);
+            memcpy(g_ble_connect_request.credentials.bssid, request->bssid, 6U);
         }
         g_retry_count = 0;
         g_ble_waiting_for_ip = false;
@@ -1386,13 +1435,7 @@ bool wifi_provisioning_handle_ble_frame(uint16_t connection_handle,
         return true;
     }
 
-    if (payload_length != 3U || request_id == 0U ||
-        (payload[2] & 0xFEU) != 0U) {
-        wifi_ble_send_clear_result(connection_handle, request_id,
-                                   WIFI_RESULT_FAILED,
-                                   WIFI_ERROR_INVALID_PARAM);
-        return true;
-    }
+    if (request->operation != WIFI_CONTROL_CLEAR) return false;
     if (g_ble_connect_request.active) {
         wifi_ble_send_clear_result(connection_handle, request_id,
                                    WIFI_RESULT_FAILED, WIFI_ERROR_BUSY);
@@ -1405,7 +1448,7 @@ bool wifi_provisioning_handle_ble_frame(uint16_t connection_handle,
         g_last_wifi_error = WIFI_ERROR_NONE;
         wifi_ble_send_clear_result(connection_handle, request_id,
                                    WIFI_RESULT_SUCCESS, WIFI_ERROR_NONE);
-        if ((payload[2] & 0x01U) != 0U) {
+        if (request->disconnect) {
             if (connection_handle == APP_REMOTE_CONNECTION_HANDLE) {
                 vTaskDelay(pdMS_TO_TICKS(500));
             }

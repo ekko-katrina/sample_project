@@ -2,6 +2,8 @@
 
 本文档只说明 ESP32 固件如何连接 MQTT Broker、订阅和发布消息，以及必须遵守的通讯规则。
 
+氛围灯、Wi-Fi 网络、固件 OTA 和车机连接采用完整 JSON 指令与事件，全部字段及示例见 [App-WiFi扩展控制协议](App-WiFi扩展控制协议.md)。支持该协议的 state 包含 `settingsJsonVersion: 1`。
+
 ## MQTT 连接
 
 ESP32 在以下条件满足后启动 MQTT：
@@ -50,7 +52,7 @@ ESP32 使用以下 Topic：
 | 订阅 | `fridge/{sn}/viewer` | 1 | 是 | 接收浏览器在线状态 |
 | 发布 | `fridge/{sn}/online` | 1 | 是 | 发布 ESP32 在线状态 |
 | 发布 | `fridge/{sn}/state` | 1 | 是 | 发布完整设备状态 |
-| 发布 | `fridge/{sn}/event` | 1 | 否 | App 扩展命令受理结果、状态和过程事件 |
+| 发布 | `fridge/{sn}/event` | 1 | 否 | 独立功能的状态回复和过程事件 |
 
 示例 SN `TMY06-TEST-001`：
 
@@ -177,9 +179,9 @@ MQTT 已连接
 - 不保存待补发的历史消息；
 - 浏览器再次在线时，只发布一条当时的最新完整状态。
 
-## 完整状态格式
+## 完整冰箱基础控制状态格式
 
-Topic：`fridge/{sn}/state`。QoS 为 1，Retain 为 `true`。每次必须发布完整状态，不能只发布发生变化的字段。
+Topic：`fridge/{sn}/state`。QoS 为 1，Retain 为 `true`。每次必须发布完整冰箱基础控制状态，不能只发布发生变化的字段。Wi-Fi、氛围灯、固件和车机等在 BLE 中独立查询的功能，MQTT 也独立查询并通过 `event` 回复，不包含在此 `state` 中。
 
 公共字段：
 
@@ -259,7 +261,7 @@ ESP32 从 `fridge/{sn}/cmd` 接收命令。命令使用 QoS 1，Retain 必须为
 | `SET_TARGET_TEMPERATURE` | `temperature`: integer | 设置当前温标下的目标温度 |
 | `SET_CHILD_LOCK` | `locked`: boolean | 设置童锁，仅TM-Y06 支持 |
 
-命令不包含 `id`，协议不定义 `reply` Topic。命令成功后，以新的完整 `state` 作为最终结果。
+命令不包含 `id`，协议不定义 `reply` Topic。基础控制命令成功后，以新的完整冰箱基础控制 `state` 作为最终结果。独立功能使用各自的查询和状态/过程回复，详见扩展协议；同样不发送通用受理回复，参数错误只记录本地日志。
 
 ESP32 无论 `viewer` 是否在线都会接收并执行合法命令；但 `viewer` 离线时不发布执行后的 `state`。
 

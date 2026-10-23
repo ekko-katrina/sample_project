@@ -208,7 +208,7 @@ static esp_err_t load_or_create_key(void)
 
 static void notify_status(uint8_t command, uint16_t connection_handle)
 {
-    if (g_notify_handler == NULL) return;
+    if (g_notify_handler == NULL && connection_handle != APP_REMOTE_CONNECTION_HANDLE) return;
     uint8_t payload[23], frame[29];
     xSemaphoreTake(g_lock, portMAX_DELAY);
     size_t vin_length = g_configured ? strlen(g_vin) : 0U;
@@ -216,7 +216,12 @@ static void notify_status(uint8_t command, uint16_t connection_handle)
     payload[2] = g_connection_state; payload[3] = g_stage; payload[4] = g_error;
     payload[5] = (uint8_t)vin_length;
     if (vin_length > 0U) memcpy(payload + 6U, g_vin, vin_length);
+    app_control_event_t event = { .kind = command == TESLA_COMMAND_STATUS ? APP_EVENT_TESLA_STATUS : APP_EVENT_TESLA_EVENT,
+        .data.tesla = { .configured = g_configured, .paired = g_paired,
+            .connection_state = g_connection_state, .stage = g_stage, .error = g_error } };
+    if (g_configured) strlcpy(event.data.tesla.vin, g_vin, sizeof(event.data.tesla.vin));
     xSemaphoreGive(g_lock);
+    if (connection_handle == APP_REMOTE_CONNECTION_HANDLE) { app_report_remote_event(&event); return; }
     size_t length = build_frame(command, payload, 6U + vin_length, frame, sizeof(frame));
     if (length > 0U) g_notify_handler(connection_handle, frame, length);
 }
@@ -600,17 +605,27 @@ bool tesla_link_handle_ble_frame(uint16_t connection_handle, const uint8_t *fram
     uint8_t command = frame[3];
     const uint8_t *payload = frame + 4U;
     size_t payload_length = length - 6U;
-    if (command == TESLA_COMMAND_QUERY_STATUS) {
-        if (payload_length == 0U) {
+    if (command == TESLA_COMMAND_QUERY_STATUS || command == TESLA_COMMAND_STOP) {
+        if (payload_length == 0U) tesla_link_execute(connection_handle,
+            command == TESLA_COMMAND_QUERY_STATUS ? TESLA_CONTROL_STATUS : TESLA_CONTROL_STOP, NULL);
+        return true;
+    }
+    if (command != TESLA_COMMAND_CONFIGURE) return false;
+    char vin[18] = {0};
+    if (payload_length == 18U && payload[0] == 17U) memcpy(vin, payload + 1U, 17U);
+    return tesla_link_execute(connection_handle, TESLA_CONTROL_CONFIGURE, vin);
+}
+
+bool tesla_link_execute(uint16_t connection_handle, tesla_control_operation_t operation, const char *vin)
+{
+    if (operation == TESLA_CONTROL_STATUS) {
             xSemaphoreTake(g_lock, portMAX_DELAY);
             g_request_connection = connection_handle;
             xSemaphoreGive(g_lock);
             notify_status(TESLA_COMMAND_STATUS, connection_handle);
-        }
         return true;
     }
-    if (command == TESLA_COMMAND_STOP) {
-        if (payload_length != 0U) return true;
+    if (operation == TESLA_CONTROL_STOP) {
         xSemaphoreTake(g_lock, portMAX_DELAY);
         g_stopped = true;
         g_pending_stop = true;
@@ -628,16 +643,8 @@ bool tesla_link_handle_ble_frame(uint16_t connection_handle, const uint8_t *fram
         if (g_task != NULL) xTaskNotifyGive(g_task);
         return true;
     }
-    if (command != TESLA_COMMAND_CONFIGURE) return false;
-    if (payload_length != 18U || payload[0] != 17U) {
-        xSemaphoreTake(g_lock, portMAX_DELAY);
-        g_stage = TESLA_STAGE_FAILED; g_error = TESLA_ERROR_INVALID_VIN;
-        xSemaphoreGive(g_lock);
-        notify_status(TESLA_COMMAND_EVENT, connection_handle);
-        return true;
-    }
-    char vin[18]; memcpy(vin, payload + 1U, 17U); vin[17] = '\0';
-    if (!is_valid_vin(vin)) {
+    if (operation != TESLA_CONTROL_CONFIGURE) return false;
+    if (vin == NULL || !is_valid_vin(vin)) {
         xSemaphoreTake(g_lock, portMAX_DELAY);
         g_stage = TESLA_STAGE_FAILED; g_error = TESLA_ERROR_INVALID_VIN;
         xSemaphoreGive(g_lock);

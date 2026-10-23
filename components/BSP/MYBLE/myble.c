@@ -266,10 +266,6 @@ static void notify_connection(phone_connection_t *connection,
                                const uint8_t *frame,
                                size_t length)
 {
-    if (connection != NULL && connection->handle == APP_REMOTE_CONNECTION_HANDLE) {
-        if (g_remote_notify != NULL) g_remote_notify(frame, length);
-        return;
-    }
     if (connection == NULL || !connection->in_use || !connection->notify_enabled) {
         return;
     }
@@ -318,10 +314,6 @@ static void notify_wifi_provisioning(uint16_t connection_handle,
                                      const uint8_t *frame,
                                      size_t length)
 {
-    if (connection_handle == APP_REMOTE_CONNECTION_HANDLE) {
-        if (g_remote_notify != NULL) g_remote_notify(frame, length);
-        return;
-    }
     notify_connection(find_connection(connection_handle), frame, length);
 }
 
@@ -329,10 +321,6 @@ static void notify_tesla_link(uint16_t connection_handle,
                               const uint8_t *frame,
                               size_t length)
 {
-    if (connection_handle == APP_REMOTE_CONNECTION_HANDLE) {
-        if (g_remote_notify != NULL) g_remote_notify(frame, length);
-        return;
-    }
     notify_connection(find_connection(connection_handle), frame, length);
 }
 
@@ -378,7 +366,8 @@ static void notify_ambient_subscribers(const char *reason)
     size_t length = tmy06_protocol_build_ambient_status_frame(g_active_profile, &snapshot, frame, sizeof(frame));
     if (length == 0U) return;
     ESP_LOGI("FRIDGE-APP", "[scope=shared] 氛围灯状态上报：%s", reason);
-    if (g_remote_notify != NULL) g_remote_notify(frame, length);
+    app_control_event_t event = { .kind = APP_EVENT_AMBIENT, .data.ambient = snapshot.ambient };
+    app_report_remote_event(&event);
     ESP_LOG_BUFFER_HEX_LEVEL("FRIDGE-APP", frame, length, ESP_LOG_DEBUG);
     for (size_t i = 0; i < MAX_PHONE_CONNECTIONS; ++i) notify_connection(&g_connections[i], frame, length);
 }
@@ -396,9 +385,11 @@ void ble_ota_report_status(tmy06_ota_status_t status, uint8_t information)
         return;
     }
 
+    app_control_event_t event = { .kind = APP_EVENT_FIRMWARE_STATUS,
+        .data.firmware = { .stage = status, .error = status == TMY06_OTA_STATUS_ERROR ? information : 0 } };
+    app_report_remote_event(&event);
     ESP_LOGI("FRIDGE-APP", "[scope=shared] OTA status=%u information=%u", (unsigned int)status, information);
     ESP_LOG_BUFFER_HEX_LEVEL("FRIDGE-APP", frame, length, ESP_LOG_DEBUG);
-    if (g_remote_notify != NULL) g_remote_notify(frame, length);
     for (size_t i = 0; i < MAX_PHONE_CONNECTIONS; ++i) {
         notify_connection(&g_connections[i], frame, length);
     }
@@ -605,28 +596,43 @@ void app_set_remote_notify_handler(app_remote_notify_t handler)
     g_remote_notify = handler;
 }
 
-bool app_remote_frame_supported(const uint8_t *frame, size_t length)
+void app_report_remote_event(const app_control_event_t *event)
 {
-    if (g_profile_info == NULL || g_profile_info->is_legacy ||
-        length < 6U || length > RX_STREAM_CAPACITY ||
-        !tmy06_protocol_validate_frame(frame, length)) return false;
-    switch (frame[3]) {
-    case 0x07: case 0xA0: case 0xA2:
-    case 0xB0: case 0xB2: case 0xB4: case 0xB6:
-    case 0xC0: case 0xC2: case 0xC4:
-        break;
-    default:
-        return false;
-    }
-    return true;
+    if (g_remote_notify != NULL) g_remote_notify(event);
 }
 
-bool app_process_remote_frame(const uint8_t *frame, size_t length)
+void app_query_firmware_version(void)
 {
-    if (!app_remote_frame_supported(frame, length)) return false;
-    phone_connection_t remote = { .handle = APP_REMOTE_CONNECTION_HANDLE,
-                                  .in_use = true, .notify_enabled = true };
-    process_complete_app_frame(&remote, frame, length);
+    app_control_event_t event = { .kind = APP_EVENT_FIRMWARE_VERSION };
+    event.data.firmware.model_id = g_profile_info->model_id;
+    get_firmware_version(&event.data.firmware.major, &event.data.firmware.minor, &event.data.firmware.patch);
+    ESP_LOGI("FRIDGE-MQTT", "查询固件版本 %u.%u.%u", event.data.firmware.major, event.data.firmware.minor, event.data.firmware.patch);
+    app_report_remote_event(&event);
+}
+
+bool app_start_firmware_update(const tmy06_ota_request_t *request)
+{
+    if (request == NULL || g_profile_info->is_legacy || request->model_id != g_profile_info->model_id) return false;
+    ESP_LOGI("FRIDGE-MQTT", "开始 OTA，目标 %u/%u.%u.%u", request->model_id, request->major, request->minor, request->patch);
+    return g_ota_start_handler != NULL && g_ota_start_handler(request);
+}
+
+void app_query_ambient_light(void)
+{
+    if (!g_profile_info->has_ambient_light) return;
+    tmy06_state_t state = get_state_snapshot();
+    app_control_event_t event = { .kind = APP_EVENT_AMBIENT, .data.ambient = state.ambient };
+    app_report_remote_event(&event);
+}
+
+bool app_set_ambient_light(const tmy06_ambient_settings_t *settings)
+{
+    if (settings == NULL || !g_profile_info->has_ambient_light || settings->effect > 1U || settings->disabled > 1U) return false;
+    if (ambient_light_save(settings) != ESP_OK) return false;
+    portENTER_CRITICAL(&g_state_lock);
+    g_fridge_state.ambient = *settings;
+    portEXIT_CRITICAL(&g_state_lock);
+    notify_ambient_subscribers("MQTT 更新氛围灯");
     return true;
 }
 
