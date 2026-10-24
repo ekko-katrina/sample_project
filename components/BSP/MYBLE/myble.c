@@ -411,22 +411,20 @@ static bool process_identity_frame(phone_connection_t *connection,
                                    const uint8_t *request, size_t length)
 {
     if (g_profile_info->is_legacy || length < 4U || request[3] != 0xD0U) return false;
-    if (length != 8U || (request[4] == 0U && request[5] == 0U)) return true;
-    uint8_t response[74] = {0xA5, 0x5A, 0, 0xD1, request[4], request[5], 0, 0};
+    if (length != 6U) return true;
+    uint8_t response[70] = {0xA5, 0x5A, 0, 0xD1};
     char sn[65];
     portENTER_CRITICAL(&g_state_lock);
     memcpy(sn, g_mqtt_sn, sizeof(sn));
     portEXIT_CRITICAL(&g_state_lock);
     size_t sn_length = strlen(sn);
-    response[2] = (uint8_t)(7U + sn_length);
-    response[6] = sn_length == 0U ? 1U : 0U;
-    response[7] = (uint8_t)sn_length;
-    memcpy(response + 8U, sn, sn_length);
+    response[2] = (uint8_t)(3U + sn_length);
+    memcpy(response + 4U, sn, sn_length);
     uint8_t checksum = 0U;
-    for (size_t i = 0; i < 8U + sn_length; ++i) checksum ^= response[i];
-    response[8U + sn_length] = checksum;
-    response[9U + sn_length] = 0xAA;
-    notify_connection(connection, response, 10U + sn_length);
+    for (size_t i = 0; i < 4U + sn_length; ++i) checksum ^= response[i];
+    response[4U + sn_length] = checksum;
+    response[5U + sn_length] = 0xAA;
+    notify_connection(connection, response, 6U + sn_length);
     return true;
 }
 

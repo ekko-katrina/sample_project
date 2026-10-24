@@ -223,7 +223,6 @@ static void publish_state(void)
         return;
     }
     cJSON_AddBoolToObject(root, "powerOn", state.power == TMY06_POWER_ON);
-    cJSON_AddNumberToObject(root, "settingsJsonVersion", 1);
     cJSON_AddStringToObject(root, "unit", unit_name(state.unit));
     cJSON_AddStringToObject(root, "mode", mode_name(state.mode));
     if (g_profile_info->has_child_lock) {
